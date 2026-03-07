@@ -1,0 +1,26 @@
+{
+  "canisters": {
+    "vox_populi_react_backend": {
+      "main": "src/vox_populi_react_backend/main.mo",
+      "type": "motoko"
+    },
+    "vox_populi_react_frontend": {
+      "dependencies": [
+        "vox_populi_react_backend"
+      ],
+      "source": [
+        "src/vox_populi_react_frontend/dist"
+      ],
+      "type": "assets",
+      "workspace": "vox_populi_react_frontend"
+    }
+  },
+  "defaults": {
+    "build": {
+      "args": "",
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
