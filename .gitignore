@@ -9,7 +9,6 @@
 
 # ICP / DFX
 .dfx/
-canister_ids.json
 
 # Archivos generados
 **/declarations/
