@@ -82,12 +82,21 @@ function resolveLocalHost() {
   return import.meta.env.VITE_IC_HOST || "http://localhost:4943"
 }
 
-const IS_IC_NETWORK = import.meta.env.DFX_NETWORK === "ic"
+function isLocalRuntimeHost(hostname: string): boolean {
+  return (
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname.endsWith(".localhost")
+  )
+}
+
+const runtimeHost = typeof window !== "undefined" ? window.location.hostname : ""
+const IS_LOCAL_RUNTIME = isLocalRuntimeHost(runtimeHost)
 
 const IC_HOST =
-  IS_IC_NETWORK
-    ? "https://ic0.app"
-    : resolveLocalHost()
+  IS_LOCAL_RUNTIME
+    ? resolveLocalHost()
+    : "https://ic0.app"
 
 let cachedActorPromise: Promise<BackendActor> | null = null
 
@@ -141,7 +150,7 @@ async function getBackendActor(): Promise<BackendActor> {
           // En local la verificacion criptografica de firmas de query puede fallar
           // en recargas directas por condiciones de replica/subnet keys.
           // Mantener en false solo fuera de la red ic.
-          verifyQuerySignatures: IS_IC_NETWORK,
+          verifyQuerySignatures: !IS_LOCAL_RUNTIME,
         },
       })
 
