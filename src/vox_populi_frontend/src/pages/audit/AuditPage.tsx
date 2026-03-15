@@ -43,6 +43,7 @@ export function AuditPage({ onBack }: AuditPageProps) {
   const [frontendModuleHash, setFrontendModuleHash] = useState<string | null>(null)
   const [isBackendAuditLoading, setIsBackendAuditLoading] = useState(true)
   const [isFrontendHashLoading, setIsFrontendHashLoading] = useState(true)
+  const [subnetId, setSubnetId] = useState<string | null>(null)
 
   // Recuperacion inicial del backend para version de codigo y metadatos disponibles.
   useEffect(() => {
@@ -61,6 +62,18 @@ export function AuditPage({ onBack }: AuditPageProps) {
         .finally(() => setIsFrontendHashLoading(false))
     } else {
       setIsFrontendHashLoading(false)
+    }
+
+    // Obtener el subnet ID via IC public API usando siempre el canister ID de mainnet
+    const icCanisterId =
+      (import.meta.env.VITE_BACKEND_CANISTER_ID_IC as string || "").trim() || backendCanisterId
+    if (icCanisterId) {
+      fetch(`https://ic-api.internetcomputer.org/api/v3/canisters/${icCanisterId}`)
+        .then((res) => res.ok ? res.json() : Promise.reject(res.status))
+        .then((data: { subnet_id?: string }) => {
+          if (data?.subnet_id) setSubnetId(data.subnet_id)
+        })
+        .catch(() => setSubnetId(null))
     }
   }, [])
 
@@ -143,6 +156,10 @@ export function AuditPage({ onBack }: AuditPageProps) {
     }
   }
 
+  const subnetUrl = subnetId
+    ? `https://dashboard.internetcomputer.org/network/subnets/${subnetId}`
+    : `https://dashboard.internetcomputer.org/network/subnets`
+
   const verificationLinks = [
     {
       name: t.audit.icDashboard,
@@ -153,6 +170,11 @@ export function AuditPage({ onBack }: AuditPageProps) {
       name: t.audit.icScan,
       url: "https://www.icpexplorer.org/#/",
       description: t.audit.icScanDesc
+    },
+    {
+      name: t.audit.icSubnet,
+      url: subnetUrl,
+      description: t.audit.icSubnetDesc
     }
   ]
 

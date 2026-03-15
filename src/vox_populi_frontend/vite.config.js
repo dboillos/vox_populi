@@ -1,11 +1,21 @@
 import { fileURLToPath, URL } from 'url';
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import environment from 'vite-plugin-environment';
 import dotenv from 'dotenv';
 
 dotenv.config({ path: '../../.env' });
+
+function resolveMainnetCanisterId(canisterName) {
+  try {
+    const ids = JSON.parse(readFileSync(new URL('../../canister_ids.json', import.meta.url)));
+    return ids?.[canisterName]?.ic || '';
+  } catch {
+    return '';
+  }
+}
 
 function resolveGitReleaseRef() {
   try {
@@ -38,6 +48,8 @@ function resolveGitCommitRef() {
   }
 }
 
+const mainnetBackendCanisterId = resolveMainnetCanisterId('vox_populi_backend');
+
 const rawGithubReleaseTag = (process.env.VITE_GITHUB_RELEASE_TAG || '').trim();
 const autoGitTagRef = resolveGitTagRef();
 const autoGitCommitRef = resolveGitCommitRef();
@@ -55,6 +67,7 @@ export default defineConfig({
     'import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO': JSON.stringify(autoGithubReleaseTag),
     'import.meta.env.VITE_GITHUB_GIT_TAG_AUTO': JSON.stringify(autoGitTagRef),
     'import.meta.env.VITE_GITHUB_COMMIT_SHORT_AUTO': JSON.stringify(autoGitCommitRef),
+    'import.meta.env.VITE_BACKEND_CANISTER_ID_IC': JSON.stringify(mainnetBackendCanisterId),
   },
   build: {
     emptyOutDir: true,

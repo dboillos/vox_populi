@@ -91,6 +91,8 @@ export interface Translations {
     icDashboardDesc: string
     icScan: string
     icScanDesc: string
+    icSubnet: string
+    icSubnetDesc: string
     dataNote: string
     loading: string
     canistersAndHashes: string
@@ -260,6 +262,8 @@ survey: {
       icDashboardDesc: "Panel oficial de Internet Computer",
       icScan: "ICP Explorer",
       icScanDesc: "Explorador de blockchain ICP",
+      icSubnet: "Explorar subnet",
+      icSubnetDesc: "Subred de Internet Computer donde se ejecutan los canisters",
       dataNote: "Los datos mostrados son un ejemplo. En producción, se obtendrán directamente del canister.",
       loading: "Cargando...",
       canistersAndHashes: "Canisters y Hashes",
@@ -416,6 +420,8 @@ survey: {
       icDashboardDesc: "Official Internet Computer panel",
       icScan: "ICP Explorer",
       icScanDesc: "ICP blockchain explorer",
+      icSubnet: "Explore subnet",
+      icSubnetDesc: "Internet Computer subnet where the canisters are running",
       dataNote: "The data shown is an example. In production, it will be obtained directly from the canister.",
       loading: "Loading...",
       canistersAndHashes: "Canisters and Hashes",
@@ -572,6 +578,8 @@ survey: {
       icDashboardDesc: "Panell oficial d'Internet Computer",
       icScan: "ICP Explorer",
       icScanDesc: "Explorador de blockchain ICP",
+      icSubnet: "Explorar subxarxa",
+      icSubnetDesc: "Subxarxa d'Internet Computer on s'executen els canisters",
       dataNote: "Les dades mostrades són un exemple. En producció, s'obtindran directament del canister.",
       loading: "Carregant...",
       canistersAndHashes: "Canisters i Hashes",
