@@ -1,25 +1,24 @@
-# Various IDEs and Editors
+# IDEs y editores
 .vscode/
 .idea/
 **/*~
 
-# Mac OSX temporary files
+# Archivos de sistema
 .DS_Store
 **/.DS_Store
 
-# dfx temporary files
+# ICP / DFX
 .dfx/
+canister_ids.json
 
-# generated files
+# Archivos generados
 **/declarations/
-
-# rust
-target/
-
-# frontend code
-node_modules/
 dist/
 .svelte-kit/
+target/
 
-# environment variables
+# Dependencias
+node_modules/
+
+# Entorno
 .env

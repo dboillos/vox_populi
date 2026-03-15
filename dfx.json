@@ -1,18 +1,24 @@
 {
   "canisters": {
-    "vox_populi_react_backend": {
-      "main": "src/vox_populi_react_backend/main.mo",
+    "vox_populi_backend": {
+      "main": "src/vox_populi_backend/main.mo",
       "type": "motoko"
     },
-    "vox_populi_react_frontend": {
+    "vox_populi_frontend": {
       "dependencies": [
-        "vox_populi_react_backend"
+        "vox_populi_backend"
       ],
       "source": [
-        "src/vox_populi_react_frontend/dist"
+        "src/vox_populi_frontend/dist"
       ],
       "type": "assets",
-      "workspace": "vox_populi_react_frontend"
+      "workspace": "vox_populi_frontend",
+      "config": [
+        {
+          "match": "**",
+          "page": "index.html"
+        }
+      ]
     }
   },
   "defaults": {
