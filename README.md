@@ -1,25 +1,72 @@
-# Vox Populi - Sistema de Votación Descentralizado en Internet Computer
+# Vox Populi
 
-Este repositorio contiene el backend de **Vox Populi**, una plataforma de encuestas y votaciones construida íntegramente sobre el **Internet Computer Protocol (ICP)** utilizando el lenguaje **Motoko**.
+Sistema de votacion descentralizado sobre Internet Computer (ICP), con backend en Motoko y frontend web.
 
-## Características Técnicas
+Repositorio oficial: https://github.com/dboillos/vox_populi
 
-El proyecto ha sido diseñado siguiendo principios avanzados de ingeniería de software para sistemas distribuidos:
+## Caracteristicas tecnicas
 
-* **Persistencia Ortogonal:** Implementación de `stable var` y `persistent actor` para garantizar que los datos de las votaciones sobrevivan a las actualizaciones del canister (upgrades).
-* **Arquitectura Modular:** Separación de responsabilidades en módulos independientes:
-    * `Types.mo`: Contratos de datos y DTOs compartidos.
-    * `Validation.mo`: Lógica de integridad y reglas de negocio.
-    * `Aggregations.mo`: Motor estadístico para el procesamiento de métricas en tiempo real.
-* **Optimización de Memoria:** Uso de estructuras de datos eficientes (`List.List`) para lograr una complejidad de inserción **O(1)**, evitando el coste computacional de la copia de arrays inmutables.
-* **Seguridad Web3:** * Validación de identidad basada en el `Principal` del firmante (`caller`).
-    * Sellado de tiempo (`timestamp`) mediante el consenso de red del IC (`Time.now()`) para evitar manipulaciones externas.
+- Persistencia ortogonal con `persistent actor` y estado estable.
+- Arquitectura modular separada por responsabilidades (`types`, `validation`, `aggregations`).
+- Insercion de votos optimizada en O(1) con `List.List`.
+- Timestamp de red (`Time.now()`) para evitar manipulacion de reloj cliente.
 
-## Estructura del Proyecto
+## Estructura principal
 
 ```text
 src/vox_populi_backend/
-├── main.mo          # Orquestador y API pública del Canister
-├── types.mo         # Definiciones de tipos Candid
-├── validation.mo    # Reglas de validación de entradas
-└── aggregations.mo  # Lógica de cálculo y analítica de datos
+|- main.mo
+|- types.mo
+|- validation.mo
+`- aggregations.mo
+```
+
+## Como verificar
+
+Objetivo: comprobar que el codigo desplegado (hash on-chain) coincide con el binario WASM compilado desde una version concreta del repositorio.
+
+### 1) Preparar entorno
+
+Instala herramientas segun tu sistema operativo:
+
+- Git: https://git-scm.com/downloads
+- DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/
+
+Verifica instalacion:
+
+```bash
+git --version
+dfx --version
+```
+
+### 2) Clonar y fijar version exacta
+
+```bash
+git clone https://github.com/dboillos/vox_populi.git
+cd vox_pop
+git checkout <tag-o-commit-a-auditar>
+```
+
+### 3) Compilar y calcular hashes locales
+
+```bash
+dfx build
+shasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm
+shasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm
+```
+
+### 4) Obtener hashes on-chain
+
+Opcion recomendada para usuario final:
+
+- Abrir la pantalla de auditoria de la app y copiar los valores de "On-chain module hash" para backend y frontend.
+
+Opcion CLI (requiere permisos de controller del canister consultado):
+
+```bash
+dfx canister status <canister-id>
+```
+
+### 5) Comparar
+
+Si los SHA-256 locales coinciden exactamente con los hashes on-chain, el binario desplegado corresponde a esa version del codigo.

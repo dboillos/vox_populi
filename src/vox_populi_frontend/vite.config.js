@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from 'url';
+import { execSync } from 'child_process';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import environment from 'vite-plugin-environment';
@@ -6,7 +7,31 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: '../../.env' });
 
+function resolveGitReleaseRef() {
+  try {
+    return execSync('git describe --tags --always', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    // Fallback para entornos sin metadata git (por ejemplo, ciertos builds en CI/CD).
+    return 'main';
+  }
+}
+
+const rawGithubReleaseTag = (process.env.VITE_GITHUB_RELEASE_TAG || '').trim();
+const autoGithubReleaseTag = resolveGitReleaseRef();
+const githubReleaseTag =
+  rawGithubReleaseTag &&
+  rawGithubReleaseTag !== '<release-tag>' &&
+  rawGithubReleaseTag !== '<release_tag>'
+    ? rawGithubReleaseTag
+    : autoGithubReleaseTag;
+
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_GITHUB_RELEASE_TAG': JSON.stringify(githubReleaseTag),
+    'import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO': JSON.stringify(autoGithubReleaseTag),
+  },
   build: {
     emptyOutDir: true,
   },

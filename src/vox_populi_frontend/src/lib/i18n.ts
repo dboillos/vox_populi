@@ -92,6 +92,31 @@ export interface Translations {
     icScan: string
     icScanDesc: string
     dataNote: string
+    loading: string
+    canistersAndHashes: string
+    canisterIdLabel: string
+    onChainModuleHashLabel: string
+    githubTagLabel: string
+    githubReleaseLabel: string
+    verify: {
+      title: string
+      intro: string
+      step1: string
+      step1Desc: string
+      step1Command: string
+      step2: string
+      step2Desc: string
+      step2CommandTemplate: string
+      step3: string
+      step3Desc: string
+      step3Command: string
+      copy: string
+      copied: string
+      repo: string
+      release: string
+      controllersNote: string
+      moduleHashUnavailable: string
+    }
   }
   
   // Login Modal
@@ -233,7 +258,32 @@ survey: {
       icDashboardDesc: "Panel oficial de Internet Computer",
       icScan: "ICScan",
       icScanDesc: "Explorador de blockchain ICP",
-      dataNote: "Los datos mostrados son un ejemplo. En producción, se obtendrán directamente del canister."
+      dataNote: "Los datos mostrados son un ejemplo. En producción, se obtendrán directamente del canister.",
+      loading: "Cargando...",
+      canistersAndHashes: "Canisters y Hashes",
+      canisterIdLabel: "Canister ID",
+      onChainModuleHashLabel: "On-chain module hash",
+      githubTagLabel: "Tag de GitHub",
+      githubReleaseLabel: "Release de GitHub",
+      verify: {
+        title: "Como Verificar",
+        intro: "Prepara entorno, compila en local y compara contra los hashes on-chain que se muestran arriba.",
+        step1: "Preparar entorno (Git + DFX)",
+        step1Desc: "Instala Git y DFX para tu sistema operativo y valida que ambos comandos funcionen.",
+        step1Command: "# Instala Git y DFX segun tu sistema operativo:\n# Git: https://git-scm.com/downloads\n# DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/\n\ngit --version\ndfx --version",
+        step2: "Clonar repositorio oficial y fijar version",
+        step2Desc: "Clona el repositorio y cambia al tag/commit que quieres auditar.",
+        step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
+        step3: "Compilar local y comparar hashes",
+        step3Desc: "Calcula SHA-256 local del WASM backend/frontend y comparalo con los hashes on-chain de esta tabla.",
+        step3Command: "dfx build\nshasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm\nshasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm\n\n# Compara estos 2 hashes con los que aparecen en la tabla 'Canisters y Hashes'",
+        copy: "Copiar",
+        copied: "Copiado",
+        repo: "Repositorio fuente",
+        release: "Referencia de release",
+        controllersNote: "Nota: si usas dfx canister status en IC, necesitas permisos de controller. Esta pantalla ya expone hashes on-chain via backend de auditoria.",
+        moduleHashUnavailable: "No legible directamente desde este cliente (requiere canister_status por un controller)",
+      }
     },
     login: {
       secureAccess: "Acceso Seguro",
@@ -362,7 +412,32 @@ survey: {
       icDashboardDesc: "Official Internet Computer panel",
       icScan: "ICScan",
       icScanDesc: "ICP blockchain explorer",
-      dataNote: "The data shown is an example. In production, it will be obtained directly from the canister."
+      dataNote: "The data shown is an example. In production, it will be obtained directly from the canister.",
+      loading: "Loading...",
+      canistersAndHashes: "Canisters and Hashes",
+      canisterIdLabel: "Canister ID",
+      onChainModuleHashLabel: "On-chain module hash",
+      githubTagLabel: "GitHub tag",
+      githubReleaseLabel: "GitHub release",
+      verify: {
+        title: "How To Verify",
+        intro: "Prepare your environment, build locally, and compare against the on-chain hashes shown above.",
+        step1: "Prepare environment (Git + DFX)",
+        step1Desc: "Install Git and DFX for your OS, then verify both tools are available.",
+        step1Command: "# Install Git and DFX for your operating system:\n# Git: https://git-scm.com/downloads\n# DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/\n\ngit --version\ndfx --version",
+        step2: "Clone official repository and pin version",
+        step2Desc: "Clone the repository and checkout the tag/commit you want to audit.",
+        step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
+        step3: "Build locally and compare hashes",
+        step3Desc: "Compute local SHA-256 for backend/frontend WASM and compare with the on-chain hashes in this table.",
+        step3Command: "dfx build\nshasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm\nshasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm\n\n# Compare these 2 hashes against the values shown in the 'Canisters and Hashes' table",
+        copy: "Copy",
+        copied: "Copied",
+        repo: "Source repository",
+        release: "Release reference",
+        controllersNote: "Note: if you use dfx canister status on IC, controller permissions are required. This page exposes on-chain hashes through the audit backend.",
+        moduleHashUnavailable: "Not directly readable from this client (requires canister_status by a controller)",
+      }
     },
     login: {
       secureAccess: "Secure Access",
@@ -491,7 +566,32 @@ survey: {
       icDashboardDesc: "Panell oficial d'Internet Computer",
       icScan: "ICScan",
       icScanDesc: "Explorador de blockchain ICP",
-      dataNote: "Les dades mostrades són un exemple. En producció, s'obtindran directament del canister."
+      dataNote: "Les dades mostrades són un exemple. En producció, s'obtindran directament del canister.",
+      loading: "Carregant...",
+      canistersAndHashes: "Canisters i Hashes",
+      canisterIdLabel: "Canister ID",
+      onChainModuleHashLabel: "On-chain module hash",
+      githubTagLabel: "Tag de GitHub",
+      githubReleaseLabel: "Release de GitHub",
+      verify: {
+        title: "Com Verificar",
+        intro: "Prepara l'entorn, compila en local i compara amb els hashes on-chain mostrats a dalt.",
+        step1: "Preparar entorn (Git + DFX)",
+        step1Desc: "Instal.la Git i DFX per al teu sistema operatiu i valida les versions.",
+        step1Command: "# Instal.la Git i DFX segons el teu sistema operatiu:\n# Git: https://git-scm.com/downloads\n# DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/\n\ngit --version\ndfx --version",
+        step2: "Clonar el repositori oficial i fixar versio",
+        step2Desc: "Clona el repositori i canvia al tag/commit que vols auditar.",
+        step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
+        step3: "Compilar en local i comparar hashes",
+        step3Desc: "Calcula el SHA-256 local del WASM backend/frontend i compara'l amb els hashes on-chain d'aquesta taula.",
+        step3Command: "dfx build\nshasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm\nshasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm\n\n# Compara aquests 2 hashes amb els valors de la taula 'Canisters i Hashes'",
+        copy: "Copiar",
+        copied: "Copiat",
+        repo: "Repositori font",
+        release: "Referencia de release",
+        controllersNote: "Nota: si fas servir dfx canister status a IC, calen permisos de controller. Aquesta pagina exposa hashes on-chain via el backend d'auditoria.",
+        moduleHashUnavailable: "No llegible directament des d'aquest client (requereix canister_status per un controller)",
+      }
     },
     login: {
       secureAccess: "Accés Segur",

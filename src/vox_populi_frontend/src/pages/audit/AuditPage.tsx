@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { ArrowLeft, ExternalLink, Hash, Cpu, Copy, Check } from "lucide-react"
 
@@ -31,7 +31,7 @@ type CanisterAuditRow = {
 }
 
 export function AuditPage({ onBack }: AuditPageProps) {
-  const { locale, t } = useLocale()
+  const { t } = useLocale()
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
 
   // Cargamos auditData on-chain del backend (sin mocks).
@@ -41,6 +41,8 @@ export function AuditPage({ onBack }: AuditPageProps) {
     codeVersion: string
   } | null>(null)
   const [frontendModuleHash, setFrontendModuleHash] = useState<string | null>(null)
+  const [isBackendAuditLoading, setIsBackendAuditLoading] = useState(true)
+  const [isFrontendHashLoading, setIsFrontendHashLoading] = useState(true)
 
   // Recuperacion inicial del backend para version de codigo y metadatos disponibles.
   useEffect(() => {
@@ -50,83 +52,41 @@ export function AuditPage({ onBack }: AuditPageProps) {
         console.error("[AuditPage] No se pudieron cargar metadatos de auditoria", error)
         setBackendAuditData(null)
       })
+      .finally(() => setIsBackendAuditLoading(false))
 
     if (frontendCanisterId) {
       void canisterService.getModuleHash(Principal.fromText(frontendCanisterId))
         .then((hash) => setFrontendModuleHash(/^[0-9a-f]{64}$/.test(hash) ? hash : null))
         .catch(() => setFrontendModuleHash(null))
+        .finally(() => setIsFrontendHashLoading(false))
+    } else {
+      setIsFrontendHashLoading(false)
     }
   }, [])
 
   const network = import.meta.env.DFX_NETWORK === "ic" ? "ic" : "local"
-  const githubRepoUrl = import.meta.env.VITE_GITHUB_REPO_URL || "https://github.com/<org>/<repo>"
-  const githubReleaseTag = import.meta.env.VITE_GITHUB_RELEASE_TAG || "<release-tag>"
+  const githubRepoUrl = import.meta.env.VITE_GITHUB_REPO_URL || "https://github.com/dboillos/vox_populi"
+  const rawReleaseTag = (import.meta.env.VITE_GITHUB_RELEASE_TAG || "").trim()
+  const githubReleaseTag =
+    rawReleaseTag && rawReleaseTag !== "<release-tag>" && rawReleaseTag !== "<release_tag>"
+      ? rawReleaseTag
+      : import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO || "main"
+  const githubTagUrl = `${githubRepoUrl}/tree/${githubReleaseTag}`
+  const githubReleaseUrl = `${githubRepoUrl}/releases/tag/${githubReleaseTag}`
 
-  const backendId = backendCanisterId || "No disponible"
-  const frontendId = frontendCanisterId || "No disponible"
+  const backendId = backendCanisterId || (isBackendAuditLoading ? t.audit.loading : "No disponible")
+  const frontendId = frontendCanisterId || (isFrontendHashLoading ? t.audit.loading : "No disponible")
 
-  // Texto didactico inline por idioma para no romper el contrato de traducciones existente.
-  const verifyTexts = useMemo(() => {
-    if (locale === "en") {
-      return {
-        title: "How To Verify",
-        intro: "Compare on-chain data with the published release artifacts in GitHub.",
-        step1: "Check canister identity and module hash on-chain",
-        step1Desc: "Open each canister in a blockchain explorer and confirm module hash.",
-        step2: "Compute local WASM hash",
-        step2Desc: "Build locally and compute SHA-256 hash for each wasm.",
-        step3: "Compare against published release manifest",
-        step3Desc: "Ensure the on-chain hash matches the hash from the release artifacts in GitHub.",
-        copy: "Copy",
-        copied: "Copied",
-        repo: "Source repository",
-        release: "Release reference",
-        controllersNote: "Tip: canister status requires controller permissions. From browser clients, module hash may not be directly readable.",
-        moduleHashUnavailable: "Not directly readable from this client (requires canister_status by a controller)",
-      }
-    }
+  const verifyTexts = t.audit.verify
 
-    if (locale === "ca") {
-      return {
-        title: "Com Verificar",
-        intro: "Compara dades on-chain amb els artefactes publicats a GitHub.",
-        step1: "Comprova identitat del canister i module hash on-chain",
-        step1Desc: "Obre cada canister a l'explorador i valida el module hash.",
-        step2: "Calcula el hash local del WASM",
-        step2Desc: "Compila en local i calcula el SHA-256 de cada wasm.",
-        step3: "Compara amb el manifest publicat de la release",
-        step3Desc: "Assegura que el hash on-chain coincideix amb el hash dels artefactes publicats a GitHub.",
-        copy: "Copiar",
-        copied: "Copiat",
-        repo: "Repositori font",
-        release: "Referencia de release",
-        controllersNote: "Consell: canister status requereix permisos de controller. Des del navegador, el module hash pot no ser llegible directament.",
-        moduleHashUnavailable: "No llegible directament des d'aquest client (requereix canister_status per un controller)",
-      }
-    }
-
-    return {
-      title: "Como Verificar",
-      intro: "Compara los datos on-chain con los artefactos publicados en GitHub.",
-      step1: "Comprobar identidad del canister y module hash on-chain",
-      step1Desc: "Abre cada canister en el explorer y valida su module hash.",
-      step2: "Calcular hash local del WASM",
-      step2Desc: "Compila en local y calcula SHA-256 de cada wasm.",
-      step3: "Comparar con el manifest publicado de la release",
-      step3Desc: "Asegura que el hash on-chain coincide con el hash de los artefactos publicados en GitHub.",
-      copy: "Copiar",
-      copied: "Copiado",
-      repo: "Repositorio fuente",
-      release: "Referencia de release",
-      controllersNote: "Nota: canister status requiere permisos de controller. Desde navegador, el module hash puede no ser legible directamente.",
-      moduleHashUnavailable: "No legible directamente desde este cliente (requiere canister_status por un controller)",
-    }
-  }, [locale])
-
-  const backendModuleHash = /^[0-9a-f]{64}$/.test(backendAuditData?.wasmModuleHash ?? "")
-    ? backendAuditData!.wasmModuleHash
-    : verifyTexts.moduleHashUnavailable
-  const codeVersion = backendAuditData?.codeVersion || "No disponible"
+  const backendModuleHash = isBackendAuditLoading
+    ? t.audit.loading
+    : /^[0-9a-f]{64}$/.test(backendAuditData?.wasmModuleHash ?? "")
+      ? backendAuditData!.wasmModuleHash
+      : verifyTexts.moduleHashUnavailable
+  const codeVersion = isBackendAuditLoading
+    ? t.audit.loading
+    : githubReleaseTag || backendAuditData?.codeVersion || "No disponible"
 
   const canisterRows: CanisterAuditRow[] = [
     {
@@ -139,7 +99,9 @@ export function AuditPage({ onBack }: AuditPageProps) {
       key: "frontend",
       name: "vox_populi_frontend",
       canisterId: frontendId,
-      moduleHash: frontendModuleHash ?? verifyTexts.moduleHashUnavailable,
+      moduleHash: isFrontendHashLoading
+        ? t.audit.loading
+        : frontendModuleHash ?? verifyTexts.moduleHashUnavailable,
     },
   ]
 
@@ -147,18 +109,19 @@ export function AuditPage({ onBack }: AuditPageProps) {
     {
       title: verifyTexts.step1,
       description: verifyTexts.step1Desc,
-      command: `dfx canister status ${backendId}`,
+      command: verifyTexts.step1Command,
     },
     {
       title: verifyTexts.step2,
       description: verifyTexts.step2Desc,
-      command:
-        "dfx build vox_populi_backend && shasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm",
+      command: verifyTexts.step2CommandTemplate
+        .replace("{repoUrl}", githubRepoUrl)
+        .replace("{releaseTag}", githubReleaseTag),
     },
     {
       title: verifyTexts.step3,
       description: verifyTexts.step3Desc,
-      command: `Open ${githubRepoUrl}/releases/tag/${githubReleaseTag}`,
+      command: verifyTexts.step3Command,
     },
   ]
 
@@ -250,10 +213,34 @@ export function AuditPage({ onBack }: AuditPageProps) {
             <CardHeader>
               <CardTitle className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Hash className="w-5 h-5 text-primary" />
-                Canisters y Hashes
+                {t.audit.canistersAndHashes}
               </CardTitle>
               <CardDescription>
-                <span className="font-medium text-foreground">{t.audit.codeVersion}:</span> {codeVersion}
+                <div className="space-y-1">
+                  <p><span className="font-medium text-foreground">{t.audit.codeVersion}:</span> {codeVersion}</p>
+                  <p>
+                    <span className="font-medium text-foreground">{t.audit.githubTagLabel}:</span>{" "}
+                    <a
+                      href={githubTagUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline-offset-4 hover:underline"
+                    >
+                      {githubReleaseTag}
+                    </a>
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">{t.audit.githubReleaseLabel}:</span>{" "}
+                    <a
+                      href={githubReleaseUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline-offset-4 hover:underline"
+                    >
+                      {githubReleaseTag}
+                    </a>
+                  </p>
+                </div>
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -261,10 +248,10 @@ export function AuditPage({ onBack }: AuditPageProps) {
                 <div key={row.key} className="rounded-lg border border-border p-4 space-y-2">
                   <p className="font-semibold text-foreground">{row.name}</p>
                   <p className="text-sm text-muted-foreground break-all">
-                    <span className="font-medium text-foreground">Canister ID:</span> {row.canisterId}
+                    <span className="font-medium text-foreground">{t.audit.canisterIdLabel}:</span> {row.canisterId}
                   </p>
                   <p className="text-sm text-muted-foreground break-all">
-                    <span className="font-medium text-foreground">On-chain module hash:</span> {row.moduleHash}
+                    <span className="font-medium text-foreground">{t.audit.onChainModuleHashLabel}:</span> {row.moduleHash}
                   </p>
                 </div>
               ))}
@@ -321,8 +308,39 @@ export function AuditPage({ onBack }: AuditPageProps) {
               </div>
 
               <div className="space-y-1 text-sm text-muted-foreground">
-                <p><span className="font-medium text-foreground">{verifyTexts.repo}:</span> {githubRepoUrl}</p>
-                <p><span className="font-medium text-foreground">{verifyTexts.release}:</span> {githubReleaseTag}</p>
+                <p>
+                  <span className="font-medium text-foreground">{verifyTexts.repo}:</span>{" "}
+                  <a
+                    href={githubRepoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubRepoUrl}
+                  </a>
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">{t.audit.githubTagLabel}:</span>{" "}
+                  <a
+                    href={githubTagUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubReleaseTag}
+                  </a>
+                </p>
+                <p>
+                  <span className="font-medium text-foreground">{verifyTexts.release}:</span>{" "}
+                  <a
+                    href={githubReleaseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubReleaseTag}
+                  </a>
+                </p>
               </div>
             </CardContent>
           </Card>
