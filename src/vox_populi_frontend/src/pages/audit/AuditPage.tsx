@@ -64,15 +64,23 @@ export function AuditPage({ onBack }: AuditPageProps) {
     }
   }, [])
 
-  const network = import.meta.env.DFX_NETWORK === "ic" ? "ic" : "local"
+  const runtimeHost = typeof window !== "undefined" ? window.location.hostname : ""
+  const isLocalRuntime = runtimeHost === "127.0.0.1" || runtimeHost.endsWith(".localhost") || runtimeHost === "localhost"
+  const network = !isLocalRuntime && import.meta.env.DFX_NETWORK === "ic" ? "ic" : "local"
   const githubRepoUrl = import.meta.env.VITE_GITHUB_REPO_URL || "https://github.com/dboillos/vox_populi"
   const rawReleaseTag = (import.meta.env.VITE_GITHUB_RELEASE_TAG || "").trim()
-  const githubReleaseTag =
+  const githubTagRef = (import.meta.env.VITE_GITHUB_GIT_TAG_AUTO || "").trim()
+  const githubCommitRef = (import.meta.env.VITE_GITHUB_COMMIT_SHORT_AUTO || "").trim()
+  const githubReleaseRef =
     rawReleaseTag && rawReleaseTag !== "<release-tag>" && rawReleaseTag !== "<release_tag>"
       ? rawReleaseTag
       : import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO || "main"
-  const githubTagUrl = `${githubRepoUrl}/tree/${githubReleaseTag}`
-  const githubReleaseUrl = `${githubRepoUrl}/releases/tag/${githubReleaseTag}`
+  const githubTagDisplay = githubTagRef || "No disponible"
+  const githubCommitDisplay = githubCommitRef || "No disponible"
+  const githubReleaseDisplay = githubTagRef || githubReleaseRef || "No disponible"
+  const githubTagUrl = githubTagRef ? `${githubRepoUrl}/tree/${githubTagRef}` : `${githubRepoUrl}/tags`
+  const githubCommitUrl = githubCommitRef ? `${githubRepoUrl}/commit/${githubCommitRef}` : `${githubRepoUrl}/commits`
+  const githubReleaseUrl = githubTagRef ? `${githubRepoUrl}/releases/tag/${githubTagRef}` : `${githubRepoUrl}/releases`
 
   const backendId = backendCanisterId || (isBackendAuditLoading ? t.audit.loading : "No disponible")
   const frontendId = frontendCanisterId || (isFrontendHashLoading ? t.audit.loading : "No disponible")
@@ -86,7 +94,7 @@ export function AuditPage({ onBack }: AuditPageProps) {
       : verifyTexts.moduleHashUnavailable
   const codeVersion = isBackendAuditLoading
     ? t.audit.loading
-    : githubReleaseTag || backendAuditData?.codeVersion || "No disponible"
+    : githubReleaseDisplay || backendAuditData?.codeVersion || "No disponible"
 
   const canisterRows: CanisterAuditRow[] = [
     {
@@ -116,7 +124,7 @@ export function AuditPage({ onBack }: AuditPageProps) {
       description: verifyTexts.step2Desc,
       command: verifyTexts.step2CommandTemplate
         .replace("{repoUrl}", githubRepoUrl)
-        .replace("{releaseTag}", githubReleaseTag),
+        .replace("{releaseTag}", githubReleaseDisplay),
     },
     {
       title: verifyTexts.step3,
@@ -138,16 +146,12 @@ export function AuditPage({ onBack }: AuditPageProps) {
   const verificationLinks = [
     {
       name: t.audit.icDashboard,
-      url: network === "ic"
-        ? `https://dashboard.internetcomputer.org/canister/${backendId}`
-        : `http://127.0.0.1:4943/?canisterId=${backendId}`,
+      url: "https://dashboard.internetcomputer.org/",
       description: t.audit.icDashboardDesc
     },
     {
       name: t.audit.icScan,
-      url: network === "ic"
-        ? `https://icscan.io/canister/${backendId}`
-        : `http://127.0.0.1:4943/?canisterId=${frontendId}`,
+      url: "https://www.icpexplorer.org/#/",
       description: t.audit.icScanDesc
     }
   ]
@@ -215,33 +219,6 @@ export function AuditPage({ onBack }: AuditPageProps) {
                 <Hash className="w-5 h-5 text-primary" />
                 {t.audit.canistersAndHashes}
               </CardTitle>
-              <CardDescription>
-                <div className="space-y-1">
-                  <p><span className="font-medium text-foreground">{t.audit.codeVersion}:</span> {codeVersion}</p>
-                  <p>
-                    <span className="font-medium text-foreground">{t.audit.githubTagLabel}:</span>{" "}
-                    <a
-                      href={githubTagUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline-offset-4 hover:underline"
-                    >
-                      {githubReleaseTag}
-                    </a>
-                  </p>
-                  <p>
-                    <span className="font-medium text-foreground">{t.audit.githubReleaseLabel}:</span>{" "}
-                    <a
-                      href={githubReleaseUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary underline-offset-4 hover:underline"
-                    >
-                      {githubReleaseTag}
-                    </a>
-                  </p>
-                </div>
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {canisterRows.map((row) => (
@@ -271,6 +248,56 @@ export function AuditPage({ onBack }: AuditPageProps) {
               <CardDescription>{verifyTexts.intro}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{t.audit.runningAppVersionLabel}:</span> {codeVersion}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{verifyTexts.repo}:</span>{" "}
+                  <a
+                    href={githubRepoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubRepoUrl}
+                  </a>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{t.audit.githubTagLabel}:</span>{" "}
+                  <a
+                    href={githubTagUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubTagDisplay}
+                  </a>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{t.audit.githubCommitLabel}:</span>{" "}
+                  <a
+                    href={githubCommitUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubCommitDisplay}
+                  </a>
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">{t.audit.githubReleaseLabel}:</span>{" "}
+                  <a
+                    href={githubReleaseUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {githubReleaseDisplay}
+                  </a>
+                </p>
+              </div>
+
               {verifySteps.map((step, index) => (
                 <div key={step.title} className="rounded-lg border border-border bg-card p-4 space-y-3">
                   <p className="font-medium text-foreground">{index + 1}. {step.title}</p>
@@ -305,42 +332,6 @@ export function AuditPage({ onBack }: AuditPageProps) {
 
               <div className="rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
                 {verifyTexts.controllersNote}
-              </div>
-
-              <div className="space-y-1 text-sm text-muted-foreground">
-                <p>
-                  <span className="font-medium text-foreground">{verifyTexts.repo}:</span>{" "}
-                  <a
-                    href={githubRepoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline-offset-4 hover:underline"
-                  >
-                    {githubRepoUrl}
-                  </a>
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">{t.audit.githubTagLabel}:</span>{" "}
-                  <a
-                    href={githubTagUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline-offset-4 hover:underline"
-                  >
-                    {githubReleaseTag}
-                  </a>
-                </p>
-                <p>
-                  <span className="font-medium text-foreground">{verifyTexts.release}:</span>{" "}
-                  <a
-                    href={githubReleaseUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary underline-offset-4 hover:underline"
-                  >
-                    {githubReleaseTag}
-                  </a>
-                </p>
               </div>
             </CardContent>
           </Card>

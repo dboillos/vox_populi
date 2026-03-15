@@ -96,8 +96,10 @@ export interface Translations {
     canistersAndHashes: string
     canisterIdLabel: string
     onChainModuleHashLabel: string
+    runningAppVersionLabel: string
     githubTagLabel: string
     githubReleaseLabel: string
+    githubCommitLabel: string
     verify: {
       title: string
       intro: string
@@ -254,17 +256,19 @@ survey: {
       codeVersionDesc: "Versión actual del canister desplegado",
       verificationLinks: "Enlaces de Verificación",
       verificationLinksDesc: "Verifica estos datos de forma independiente en exploradores externos",
-      icDashboard: "IC Dashboard",
+      icDashboard: "ICP Dashboard",
       icDashboardDesc: "Panel oficial de Internet Computer",
-      icScan: "ICScan",
+      icScan: "ICP Explorer",
       icScanDesc: "Explorador de blockchain ICP",
       dataNote: "Los datos mostrados son un ejemplo. En producción, se obtendrán directamente del canister.",
       loading: "Cargando...",
       canistersAndHashes: "Canisters y Hashes",
       canisterIdLabel: "Canister ID",
       onChainModuleHashLabel: "On-chain module hash",
+      runningAppVersionLabel: "Version actual de la app en ejecucion",
       githubTagLabel: "Tag de GitHub",
       githubReleaseLabel: "Release de GitHub",
+      githubCommitLabel: "Commit de GitHub",
       verify: {
         title: "Como Verificar",
         intro: "Prepara entorno, compila en local y compara contra los hashes on-chain que se muestran arriba.",
@@ -408,17 +412,19 @@ survey: {
       codeVersionDesc: "Current version of the deployed canister",
       verificationLinks: "Verification Links",
       verificationLinksDesc: "Verify this data independently on external explorers",
-      icDashboard: "IC Dashboard",
+      icDashboard: "ICP Dashboard",
       icDashboardDesc: "Official Internet Computer panel",
-      icScan: "ICScan",
+      icScan: "ICP Explorer",
       icScanDesc: "ICP blockchain explorer",
       dataNote: "The data shown is an example. In production, it will be obtained directly from the canister.",
       loading: "Loading...",
       canistersAndHashes: "Canisters and Hashes",
       canisterIdLabel: "Canister ID",
       onChainModuleHashLabel: "On-chain module hash",
+      runningAppVersionLabel: "Current running app version",
       githubTagLabel: "GitHub tag",
       githubReleaseLabel: "GitHub release",
+      githubCommitLabel: "GitHub commit",
       verify: {
         title: "How To Verify",
         intro: "Prepare your environment, build locally, and compare against the on-chain hashes shown above.",
@@ -562,17 +568,19 @@ survey: {
       codeVersionDesc: "Versió actual del canister desplegat",
       verificationLinks: "Enllaços de Verificació",
       verificationLinksDesc: "Verifica aquestes dades de forma independent a exploradors externs",
-      icDashboard: "IC Dashboard",
+      icDashboard: "ICP Dashboard",
       icDashboardDesc: "Panell oficial d'Internet Computer",
-      icScan: "ICScan",
+      icScan: "ICP Explorer",
       icScanDesc: "Explorador de blockchain ICP",
       dataNote: "Les dades mostrades són un exemple. En producció, s'obtindran directament del canister.",
       loading: "Carregant...",
       canistersAndHashes: "Canisters i Hashes",
       canisterIdLabel: "Canister ID",
       onChainModuleHashLabel: "On-chain module hash",
+      runningAppVersionLabel: "Versio actual de l'app en execucio",
       githubTagLabel: "Tag de GitHub",
       githubReleaseLabel: "Release de GitHub",
+      githubCommitLabel: "Commit de GitHub",
       verify: {
         title: "Com Verificar",
         intro: "Prepara l'entorn, compila en local i compara amb els hashes on-chain mostrats a dalt.",

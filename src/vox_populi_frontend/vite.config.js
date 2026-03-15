@@ -18,7 +18,29 @@ function resolveGitReleaseRef() {
   }
 }
 
+function resolveGitTagRef() {
+  try {
+    return execSync('git describe --tags --exact-match', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return '';
+  }
+}
+
+function resolveGitCommitRef() {
+  try {
+    return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim();
+  } catch {
+    return 'unknown';
+  }
+}
+
 const rawGithubReleaseTag = (process.env.VITE_GITHUB_RELEASE_TAG || '').trim();
+const autoGitTagRef = resolveGitTagRef();
+const autoGitCommitRef = resolveGitCommitRef();
 const autoGithubReleaseTag = resolveGitReleaseRef();
 const githubReleaseTag =
   rawGithubReleaseTag &&
@@ -31,6 +53,8 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_GITHUB_RELEASE_TAG': JSON.stringify(githubReleaseTag),
     'import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO': JSON.stringify(autoGithubReleaseTag),
+    'import.meta.env.VITE_GITHUB_GIT_TAG_AUTO': JSON.stringify(autoGitTagRef),
+    'import.meta.env.VITE_GITHUB_COMMIT_SHORT_AUTO': JSON.stringify(autoGitCommitRef),
   },
   build: {
     emptyOutDir: true,
