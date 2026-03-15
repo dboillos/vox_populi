@@ -1,7 +1,7 @@
 
 
 import { motion } from "framer-motion"
-import { Vote, BarChart3, Clock, Users } from "lucide-react"
+import { Vote, BarChart3, Clock } from "lucide-react"
 
 // Componentes de UI (Carpeta src/components/ui)
 import { Button } from "@/components/ui/button"
@@ -70,10 +70,6 @@ export function SurveyCard({ survey, onVote, onResults, index }: SurveyCardProps
         <CardContent className="space-y-4">
           {isActive && (
             <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1.5">
-                <Users className="w-4 h-4" />
-                <span>{survey.votes} {t.surveyCard.votes}</span>
-              </div>
               <div className="flex items-center gap-1.5">
                 <Clock className="w-4 h-4" />
                 <span>{t.surveyCard.until} {survey.deadline}</span>
