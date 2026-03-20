@@ -77,6 +77,22 @@ module {
     codeVersion : Text;
   };
 
+  // Claims minimos del id_token de Google para validacion de login institucional.
+  public type GoogleIdentityClaims = {
+    email : Text;
+    emailVerified : Bool;
+    issuer : Text;
+    audience : Text;
+    expiresAtSec : Nat;
+  };
+
+  // Resultado de validacion de id_token JWT en backend.
+  public type GoogleTokenValidation = {
+    isValid : Bool;
+    email : ?Text;
+    reason : Text;
+  };
+
   // Estructura persistida interna.
   // Diferencia importante con RawResponse:
   // - StoredVote guarda voteId interno y surveyId.

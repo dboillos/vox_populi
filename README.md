@@ -10,6 +10,67 @@ Repositorio oficial: https://github.com/dboillos/vox_populi
 - Arquitectura modular separada por responsabilidades (`types`, `validation`, `aggregations`).
 - Insercion de votos optimizada en O(1) con `List.List`.
 - Timestamp de red (`Time.now()`) para evitar manipulacion de reloj cliente.
+- Login institucional con Google OIDC y validacion de `id_token` en backend.
+- Regla de integridad: no se permiten votos duplicados por `(surveyId, voterId)`.
+
+## Autenticacion OIDC (TFM)
+
+### Objetivo
+
+Garantizar que solo miembros de la comunidad UOC puedan votar, sin almacenar el email en blockchain.
+
+### Flujo implementado
+
+1. El frontend inicia Google Identity Services y solicita un `id_token` JWT.
+2. El frontend envia `id_token` al backend junto con `expectedAudience` (OAuth Client ID).
+3. El backend consulta `https://oauth2.googleapis.com/tokeninfo?id_token=...` mediante HTTPS outcall.
+4. El backend valida los campos de seguridad:
+	 - `aud` coincide con el client ID esperado.
+	 - `iss` es Google (`accounts.google.com` o `https://accounts.google.com`).
+	 - `exp` no esta caducado.
+	 - `email_verified` es `true`.
+	 - `email` pertenece a `@uoc.edu`.
+5. Si la validacion es correcta, el frontend recibe email validado y genera `anonymousId` con SHA-256.
+6. El voto se registra con `anonymousId` (no con email).
+
+### Archivos clave
+
+- Frontend login: `src/vox_populi_frontend/src/lib/login.ts`
+- Servicio frontend-canister: `src/vox_populi_frontend/src/lib/canister-service.ts`
+- API backend de validacion: `src/vox_populi_backend/main.mo` (`validateGoogleIdToken`)
+- Tipos compartidos: `src/vox_populi_backend/types.mo`
+
+### Nota metodologica para TFM
+
+Esta implementacion valida el token con Google en tiempo real via `tokeninfo` (validacion delegada en proveedor de identidad). Es una arquitectura valida para prototipo academico y despliegue controlado. Como trabajo futuro, se puede incorporar verificacion criptografica local de firma JWT (JWKS) dentro de la capa de backend/verificador dedicado.
+
+## Prevencion de voto duplicado (TFM)
+
+### Regla de negocio
+
+Un mismo votante anonimo (`voterId`) no puede emitir mas de un voto en la misma encuesta (`surveyId`).
+
+### Punto de control obligatorio
+
+La restriccion se aplica en backend dentro de `submitVote`, recorriendo `storedVotes` y bloqueando cuando encuentra una coincidencia exacta de `(surveyId, voterId)`.
+
+### Fragmento de control
+
+```motoko
+for (vote in List.toIter(storedVotes)) {
+	if (vote.surveyId == surveyId and vote.voterId == resolvedVoterId) {
+		return {
+			success = false;
+			message = "Este usuario ya ha votado en esta encuesta";
+			voteId = ?("vote-" # Nat.toText(vote.voteId));
+		};
+	};
+};
+```
+
+### Razon de seguridad
+
+La validacion en frontend es solo UX. La garantia de no duplicidad se hace en backend para que no pueda saltarse modificando cliente o peticiones HTTP.
 
 ## Estructura principal
 

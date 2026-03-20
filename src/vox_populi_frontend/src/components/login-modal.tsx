@@ -6,11 +6,9 @@ import { X, Mail, Shield, AlertCircle, CheckCircle2 } from "lucide-react"
 // Componentes de UI (Carpeta src/components/ui)
 import { Button } from "@/components/ui/button"
 
-// Componentes de Layout (Carpeta src/components/layout)
-import { InfoTerm } from "@/components/layout/info-term"
-
 // Lógica y Contexto (Carpeta src/lib)
 import { useLocale } from "@/lib/locale-context"
+import { LoginError, loginWithGoogle } from "@/lib/login"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -22,18 +20,24 @@ interface LoginModalProps {
 export function LoginModal({ isOpen, onClose, onSuccess, mode }: LoginModalProps) {
   const { t } = useLocale()
   const [isLoading, setIsLoading] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   const handleGoogleLogin = async () => {
     setIsLoading(true)
-    
-    // Simular latencia de red
-    await new Promise(resolve => setTimeout(resolve, 1500))
-    
-    const simulatedEmail = "usuario@uoc.edu"
-    
-    setIsLoading(false)
-    // CORRECCIÓN: Pasamos el email al handler de éxito
-    onSuccess(simulatedEmail)
+    setAuthError(null)
+
+    try {
+      const email = await loginWithGoogle()
+      onSuccess(email)
+    } catch (error) {
+      if (error instanceof LoginError && error.code === "domain_not_allowed") {
+        setAuthError(t.login.domainError)
+      } else {
+        setAuthError(t.login.accessDeniedDescription)
+      }
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -106,6 +110,10 @@ export function LoginModal({ isOpen, onClose, onSuccess, mode }: LoginModalProps
                         {t.login.privacyNoteParts.after}
                       </p>
                     </div>
+
+                    {authError ? (
+                      <p className="text-sm text-destructive leading-relaxed">{authError}</p>
+                    ) : null}
                   </div>
                 </>
               ) : (

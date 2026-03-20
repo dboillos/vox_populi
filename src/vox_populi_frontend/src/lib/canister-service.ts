@@ -48,6 +48,20 @@ export interface AuditData {
   codeVersion: string
 }
 
+export interface GoogleIdentityClaims {
+  email: string
+  emailVerified: boolean
+  issuer: string
+  audience: string
+  expiresAtSec: number
+}
+
+export interface GoogleTokenValidation {
+  isValid: boolean
+  email?: string
+  reason: string
+}
+
 interface BackendVoteResponse {
   success: boolean
   message: string
@@ -74,6 +88,13 @@ interface BackendActor {
   getAuditData: () => Promise<AuditData>
   getModuleHash: (canisterId: Principal) => Promise<string>
   hasUserVoted: (surveyId: string, voterId: string) => Promise<boolean>
+  validateInstitutionalEmail: (email: string) => Promise<boolean>
+  validateGoogleIdentity: (claims: GoogleIdentityClaims, expectedAudience: string) => Promise<boolean>
+  validateGoogleIdToken: (idToken: string, expectedAudience: string) => Promise<{
+    isValid: boolean
+    email: [] | [string]
+    reason: string
+  }>
 }
 
 const CANISTER_ID = generatedCanisterId || import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND || ""
@@ -288,5 +309,32 @@ export const canisterService = {
       const actor = await getBackendActor()
       return actor.hasUserVoted(surveyId, anonymousId)
     })
+  },
+
+  async validateInstitutionalEmail(email: string): Promise<boolean> {
+    return withTrustRetry(async () => {
+      const actor = await getBackendActor()
+      return actor.validateInstitutionalEmail(email)
+    })
+  },
+
+  async validateGoogleIdentity(claims: GoogleIdentityClaims, expectedAudience: string): Promise<boolean> {
+    return withTrustRetry(async () => {
+      const actor = await getBackendActor()
+      return actor.validateGoogleIdentity(claims, expectedAudience)
+    })
+  },
+
+  async validateGoogleIdToken(idToken: string, expectedAudience: string): Promise<GoogleTokenValidation> {
+    const result = await withTrustRetry(async () => {
+      const actor = await getBackendActor()
+      return actor.validateGoogleIdToken(idToken, expectedAudience)
+    })
+
+    return {
+      isValid: result.isValid,
+      email: result.email[0],
+      reason: result.reason,
+    }
   },
 }

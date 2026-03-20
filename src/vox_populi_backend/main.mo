@@ -1,8 +1,10 @@
 import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Int "mo:base/Int";
+import Iter "mo:base/Iter";
 import List "mo:base/List";
 import Nat "mo:base/Nat";
+import Nat64 "mo:base/Nat64";
 import Nat8 "mo:base/Nat8";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
@@ -34,6 +36,44 @@ persistent actor Self {
   public type AggregatedResults = Types.AggregatedResults;
   public type RawResponse = Types.RawResponse;
   public type AuditData = Types.AuditData;
+  public type GoogleIdentityClaims = Types.GoogleIdentityClaims;
+  public type GoogleTokenValidation = Types.GoogleTokenValidation;
+
+  type HttpHeader = {
+    name : Text;
+    value : Text;
+  };
+
+  type HttpMethod = {
+    #get;
+    #head;
+    #post;
+  };
+
+  type HttpResponsePayload = {
+    status : Nat;
+    headers : [HttpHeader];
+    body : [Nat8];
+  };
+
+  type TransformArgs = {
+    response : HttpResponsePayload;
+    context : Blob;
+  };
+
+  type TransformContext = {
+    function : shared query (TransformArgs) -> async HttpResponsePayload;
+    context : Blob;
+  };
+
+  type HttpRequestArgs = {
+    url : Text;
+    max_response_bytes : ?Nat64;
+    headers : [HttpHeader];
+    body : [Nat8];
+    method : HttpMethod;
+    transform : ?TransformContext;
+  };
 
   // -----------------------------
   // Estado persistente del actor
@@ -65,6 +105,7 @@ persistent actor Self {
       cycles : Nat;
       memory_size : Nat;
     };
+    http_request : shared HttpRequestArgs -> async HttpResponsePayload;
   };
 
   // Convierte un Blob de bytes a cadena hexadecimal en minusculas.
@@ -85,6 +126,37 @@ persistent actor Self {
   func surveyVotesInInsertionOrder(surveyId : Text) : [Types.StoredVote] {
     let surveyVotes = Aggregations.getVotesBySurvey(storedVotes, surveyId);
     List.toArray(List.reverse(surveyVotes));
+  };
+
+  func extractJsonString(jsonText : Text, key : Text) : ?Text {
+    // Parser ligero para respuestas planas de tokeninfo.
+    // Nota: suficiente para claims escalares usados en este flujo TFM.
+    let marker = "\"" # key # "\":\"";
+    let splitByKey = Iter.toArray(Text.split(jsonText, #text marker));
+    if (splitByKey.size() < 2) {
+      return null;
+    };
+
+    let tail = splitByKey[1];
+    let splitByQuote = Iter.toArray(Text.split(tail, #text "\""));
+    if (splitByQuote.size() < 1) {
+      return null;
+    };
+
+    ?splitByQuote[0];
+  };
+
+  func isGoogleIssuer(issuer : Text) : Bool {
+    issuer == "https://accounts.google.com" or issuer == "accounts.google.com";
+  };
+
+  func invalidToken(reason : Text) : GoogleTokenValidation {
+    // Respuesta estándar de error para facilitar trazabilidad desde frontend.
+    {
+      isValid = false;
+      email = null;
+      reason = reason;
+    };
   };
 
   // ---------------------------------
@@ -109,7 +181,7 @@ persistent actor Self {
   // - se devuelve voteId con formato "vote-<n>".
   // Errores funcionales (success = false):
   // - encuesta obligatoria, respuestas vacias, preguntas repetidas,
-  //   respuestas fuera de rango, o voto duplicado (si se reactiva bloqueo).
+  //   respuestas fuera de rango o voto duplicado.
   // Complejidad aproximada: O(n + m), donde n=answers, m=votos persistidos
   // (solo cuando el bloqueo de duplicados esta activo).
   // Registra un voto con validacion de integridad del payload.
@@ -118,8 +190,6 @@ persistent actor Self {
   // 2) valida duplicados y rangos de pregunta/opcion.
   // 3) resuelve voterId (si viene vacio, usa caller).
   // 4) persiste el voto y devuelve voteId.
-  // NOTA (modo pruebas): la validacion de voto repetido esta desactivada temporalmente.
-  // Para volver al comportamiento de un voto por usuario+encuesta, descomenta el bloque marcado mas abajo.
   public shared ({ caller }) func submitVote(
     surveyId : Text,
     voterId : Text,
@@ -171,16 +241,21 @@ persistent actor Self {
         voterId;
       };
 
-    // --- REACTIVAR PARA BLOQUEAR VOTOS REPETIDOS ---
-    // for (vote in List.toIter(storedVotes)) {
-    //   if (vote.surveyId == surveyId and vote.voterId == resolvedVoterId) {
-    //     return {
-    //       success = false;
-    //       message = "Este usuario ya ha votado en esta encuesta";
-    //       voteId = ?("vote-" # Nat.toText(vote.voteId));
-    //     };
-    //   };
-    // };
+    // Bloqueo de voto duplicado por clave logica (surveyId, voterId).
+    // - voterId: identidad anonima del votante (derivada del email o fallback al caller).
+    // - vote.voteId: identificador interno del registro de voto ya guardado.
+    // Este control NO compara voteId porque voteId siempre es unico por registro;
+    // la regla de negocio es impedir un segundo voto de la misma identidad anonima
+    // dentro de la misma encuesta.
+    for (vote in List.toIter(storedVotes)) {
+      if (vote.surveyId == surveyId and vote.voterId == resolvedVoterId) {
+        return {
+          success = false;
+          message = "Este usuario ya ha votado en esta encuesta";
+          voteId = ?("vote-" # Nat.toText(vote.voteId));
+        };
+      };
+    };
 
     // Tiempo de red del canister (ms epoch) derivado de Time.now() en nanosegundos.
     let currentTimestamp = Int.abs(Time.now() / 1_000_000);
@@ -230,6 +305,172 @@ persistent actor Self {
     };
 
     false;
+  };
+
+  // API CONTRACT: validateInstitutionalEmail (query)
+  // Parametros:
+  // - email: correo de la cuenta autenticada por proveedor OIDC.
+  // Resultado:
+  // - true cuando el dominio es @uoc.edu.
+  // Notas:
+  // - Esta validacion es la primera capa de backend para login institucional.
+  // - La validacion criptografica completa del id_token se implementara en la siguiente fase.
+  public query func validateInstitutionalEmail(email : Text) : async Bool {
+    Validation.isUocInstitutionalEmail(email);
+  };
+
+  // API CONTRACT: validateGoogleIdentity (query)
+  // Parametros:
+  // - claims: claims minimos extraidos del id_token JWT en frontend.
+  // - expectedAudience: client_id de Google esperado por backend.
+  // Resultado:
+  // - true cuando email/aud/iss/exp son consistentes con login institucional UOC.
+  // Nota de seguridad:
+  // - Esta fase valida semantica de claims.
+  // - La validacion criptografica de firma JWT se incorporara en la siguiente iteracion.
+  public query func validateGoogleIdentity(claims : GoogleIdentityClaims, expectedAudience : Text) : async Bool {
+    if (not claims.emailVerified) {
+      return false;
+    };
+
+    if (not Validation.isUocInstitutionalEmail(claims.email)) {
+      return false;
+    };
+
+    if (Text.size(expectedAudience) == 0 or claims.audience != expectedAudience) {
+      return false;
+    };
+
+    if (claims.issuer != "https://accounts.google.com" and claims.issuer != "accounts.google.com") {
+      return false;
+    };
+
+    let nowSec = Int.abs(Time.now() / 1_000_000_000);
+    if (claims.expiresAtSec <= nowSec) {
+      return false;
+    };
+
+    true;
+  };
+
+  // API CONTRACT: validateGoogleIdToken (update)
+  // Parametros:
+  // - idToken: JWT emitido por Google Identity Services.
+  // - expectedAudience: client_id OAuth configurado en el frontend.
+  // Resultado:
+  // - GoogleTokenValidation con estado final, email validado (si aplica) y motivo.
+  // Seguridad:
+  // - El backend consulta tokeninfo de Google para validar token firmado por Google.
+  // - Se valida aud, iss, exp, email_verified y dominio @uoc.edu.
+  public func validateGoogleIdToken(idToken : Text, expectedAudience : Text) : async GoogleTokenValidation {
+    if (Text.size(idToken) == 0) {
+      return invalidToken("id_token vacio");
+    };
+
+    if (Text.size(expectedAudience) == 0) {
+      return invalidToken("audiencia esperada vacia");
+    };
+
+    let endpoint = "https://oauth2.googleapis.com/tokeninfo?id_token=" # idToken;
+    // Validación delegada en Google: tokeninfo devuelve claims ya verificados por proveedor.
+    let request : HttpRequestArgs = {
+      url = endpoint;
+      max_response_bytes = ?4_096;
+      method = #get;
+      headers = [
+        {
+          name = "User-Agent";
+          value = "vox-populi-backend";
+        },
+      ];
+      body = [];
+      transform = null;
+    };
+
+    let response =
+      try {
+        // Outcall HTTPS con ciclos explícitos para cubrir coste de red en IC.
+        await (with cycles = 70_000_000_000) IC.http_request(request);
+      } catch (_) {
+        return invalidToken("fallo al consultar tokeninfo de Google");
+      };
+
+    if (response.status != 200) {
+      return invalidToken("Google tokeninfo rechazo el token");
+    };
+
+    let bodyText =
+      switch (Text.decodeUtf8(Blob.fromArray(response.body))) {
+        case (?text) { text };
+        case null { return invalidToken("respuesta tokeninfo no UTF-8") };
+      };
+
+    // 1) aud debe corresponder exactamente al OAuth client ID de esta app.
+    let aud =
+      switch (extractJsonString(bodyText, "aud")) {
+        case (?value) { value };
+        case null { return invalidToken("claim aud ausente") };
+      };
+
+    if (aud != expectedAudience) {
+      return invalidToken("aud invalido para este cliente OAuth");
+    };
+
+    // 2) iss debe ser Google para evitar tokens de emisores no confiables.
+    let issuer =
+      switch (extractJsonString(bodyText, "iss")) {
+        case (?value) { value };
+        case null { return invalidToken("claim iss ausente") };
+      };
+
+    if (not isGoogleIssuer(issuer)) {
+      return invalidToken("issuer no reconocido");
+    };
+
+    // 3) exp debe indicar que el token sigue vigente.
+    let expText =
+      switch (extractJsonString(bodyText, "exp")) {
+        case (?value) { value };
+        case null { return invalidToken("claim exp ausente") };
+      };
+
+    let exp =
+      switch (Nat.fromText(expText)) {
+        case (?value) { value };
+        case null { return invalidToken("claim exp invalido") };
+      };
+
+    let nowSec = Int.abs(Time.now() / 1_000_000_000);
+    if (exp <= nowSec) {
+      return invalidToken("token expirado");
+    };
+
+    // 4) email verificado y dominio institucional UOC.
+    let email =
+      switch (extractJsonString(bodyText, "email")) {
+        case (?value) { value };
+        case null { return invalidToken("claim email ausente") };
+      };
+
+    let emailVerified =
+      switch (extractJsonString(bodyText, "email_verified")) {
+        case (?value) { value == "true" };
+        case null { false };
+      };
+
+    if (not emailVerified) {
+      return invalidToken("email no verificado por Google");
+    };
+
+    if (not Validation.isUocInstitutionalEmail(email)) {
+      return invalidToken("dominio no permitido: solo @uoc.edu");
+    };
+
+    {
+      isValid = true;
+      email = ?email;
+      reason = "ok";
+    };
   };
 
   // API CONTRACT: getAggregatedResults (query)

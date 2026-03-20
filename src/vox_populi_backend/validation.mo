@@ -1,5 +1,7 @@
 import Iter "mo:base/Iter";
 import Nat "mo:base/Nat";
+import Text "mo:base/Text";
+import Prim "mo:⛔";
 
 import Types "./types";
 
@@ -42,5 +44,12 @@ module {
     };
 
     false;
+  };
+
+  // Valida si un correo institucional pertenece al dominio UOC.
+  // Normaliza solo ASCII para evitar rechazos por mayusculas.
+  public func isUocInstitutionalEmail(email : Text) : Bool {
+    let normalized = Text.map(email, Prim.charToLower);
+    Text.endsWith(normalized, #text "@uoc.edu");
   };
 };
