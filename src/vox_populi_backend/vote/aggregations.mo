@@ -4,7 +4,7 @@ import List "mo:base/List";
 import Nat "mo:base/Nat";
 import Text "mo:base/Text";
 
-import Types "./types";
+import Types "../shared/types";
 
 module {
   // -------------------------------------
@@ -15,8 +15,12 @@ module {
   // - Evita conversiones List -> Array en rutas de agregacion.
   // - Mantiene coste lineal O(n) en cada calculo sobre votos filtrados.
 
-  // Busca la opcion seleccionada para una pregunta concreta.
-  // Devuelve null cuando la pregunta no fue respondida.
+  // API CONTRACT: getAnswerIndex
+  // Parametros:
+  // - answers: respuestas normalizadas de un voto.
+  // - questionId: pregunta objetivo.
+  // Resultado:
+  // - `?Nat` con el optionIndex seleccionado, o `null` si no existe respuesta.
   public func getAnswerIndex(answers : [Types.AnswerSelection], questionId : Nat) : ?Nat {
     for (answer in answers.vals()) {
       if (answer.questionId == questionId) {
@@ -27,8 +31,14 @@ module {
     null;
   };
 
-  // Filtra votos por surveyId manteniendo la estructura de lista.
-  // Este enfoque evita materializar arrays cuando no hace falta orden de insercion.
+  // API CONTRACT: getVotesBySurvey
+  // Parametros:
+  // - storedVotes: lista global de votos persistidos.
+  // - surveyId: identificador de encuesta.
+  // Resultado:
+  // - sublista con solo votos de la encuesta indicada.
+  // Nota:
+  // - Conserva estructura `List` para evitar conversiones innecesarias a array.
   public func getVotesBySurvey(storedVotes : List.List<Types.StoredVote>, surveyId : Text) : List.List<Types.StoredVote> {
     switch (storedVotes) {
       case null { null };
@@ -43,8 +53,14 @@ module {
     };
   };
 
-  // Calcula porcentaje entero con redondeo al entero mas cercano.
-  // Formula: (part * 100 + total/2) / total
+  // API CONTRACT: percentage
+  // Parametros:
+  // - part: numerador.
+  // - total: denominador.
+  // Resultado:
+  // - porcentaje entero redondeado al entero mas cercano.
+  // Formula:
+  // - (part * 100 + total/2) / total
   public func percentage(part : Nat, total : Nat) : Nat {
     if (total == 0) {
       return 0;
@@ -53,7 +69,12 @@ module {
     (part * 100 + (total / 2)) / total;
   };
 
-  // Media flotante segura (evita division por cero).
+  // API CONTRACT: averageFloat
+  // Parametros:
+  // - sum: suma acumulada.
+  // - count: numero de elementos.
+  // Resultado:
+  // - media aritmetica en float, o 0 cuando count es 0.
   public func averageFloat(sum : Float, count : Nat) : Float {
     if (count == 0) {
       return 0;
@@ -62,8 +83,13 @@ module {
     sum / Float.fromInt(count);
   };
 
-  // Construye la distribucion porcentual de la pregunta 1.
-  // El resultado usa optionIndex para que frontend traduzca etiquetas por idioma.
+  // API CONTRACT: buildToolDistribution
+  // Parametros:
+  // - votes: votos filtrados de una encuesta.
+  // Resultado:
+  // - distribucion porcentual por optionIndex para la pregunta 1.
+  // Nota:
+  // - El frontend resuelve etiquetas segun idioma a partir de optionIndex.
   public func buildToolDistribution(votes : List.List<Types.StoredVote>) : [Types.ToolDistributionItem] {
     let counts = Array.init<Nat>(6, 0);
     var totalVotes : Nat = 0;
@@ -86,8 +112,14 @@ module {
     });
   };
 
-  // Construye una fila de la matriz de seguridad.
-  // reverseTrust permite invertir semantica cuando la opcion 0 significa desconfianza.
+  // API CONTRACT: buildSecurityRow
+  // Parametros:
+  // - votes: votos filtrados de una encuesta.
+  // - questionId: pregunta que alimenta la fila.
+  // - category: clave semantica de la categoria.
+  // - reverseTrust: invierte la semantica de confianza cuando aplica.
+  // Resultado:
+  // - fila con porcentajes de confia/neutral/desconfia.
   public func buildSecurityRow(votes : List.List<Types.StoredVote>, questionId : Nat, category : Text, reverseTrust : Bool) : Types.SecurityMatrixRow {
     var trustCount : Nat = 0;
     var neutralCount : Nat = 0;
@@ -129,8 +161,13 @@ module {
     };
   };
 
-  // Construye los 4 ejes del radar (quality, ethics, effort, savings).
-  // Cada pregunta se proyecta a una escala comun de 1..5 para comparabilidad.
+  // API CONTRACT: buildImpactRadar
+  // Parametros:
+  // - votes: votos filtrados de una encuesta.
+  // Resultado:
+  // - cuatro ejes de radar (`quality`, `ethics`, `effort`, `savings`) en escala 1..5.
+  // Nota:
+  // - Incluye mapeos por pregunta para llevar distintas escalas a un marco comun.
   public func buildImpactRadar(votes : List.List<Types.StoredVote>) : [Types.RadarPoint] {
     var qualitySum : Float = 0;
     var qualityCount : Nat = 0;
@@ -233,8 +270,11 @@ module {
     ];
   };
 
-  // Calcula horas medias ahorradas a partir de la pregunta 3.
-  // El resultado se redondea a 1 decimal para visualizacion estable.
+  // API CONTRACT: averageHoursSaved
+  // Parametros:
+  // - votes: votos filtrados de una encuesta.
+  // Resultado:
+  // - media de horas ahorradas (pregunta 3), redondeada a 1 decimal.
   public func averageHoursSaved(votes : List.List<Types.StoredVote>) : Float {
     var totalHours : Float = 0;
     var answeredCount : Nat = 0;

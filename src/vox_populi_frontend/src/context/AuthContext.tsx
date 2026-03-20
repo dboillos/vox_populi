@@ -8,7 +8,8 @@ interface AuthContextType {
   isAuthenticated: boolean // Añadimos este alias para que no falle la Landing
   isInitializing: boolean
   userEmail: string | null
-  login: (email: string) => void
+  userVoterId: string | null
+  login: (email: string, voterId: string) => void
   logout: () => void
 }
 
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [userVoterId, setUserVoterId] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
 
   // Creamos la propiedad derivada
@@ -26,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(SESSION_KEY)
     setIsLoggedIn(false)
     setUserEmail(null)
+    setUserVoterId(null)
   }, [])
 
   useEffect(() => {
@@ -36,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (Date.now() < session.expiresAt) {
           setIsLoggedIn(true)
           setUserEmail(session.email)
+          setUserVoterId(session.voterId ?? null)
         } else {
           logout()
         }
@@ -46,11 +50,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsInitializing(false)
   }, [logout])
 
-  const login = (email: string) => {
+  const login = (email: string, voterId: string) => {
     const expiresAt = Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ email, expiresAt }))
+    localStorage.setItem(SESSION_KEY, JSON.stringify({ email, voterId, expiresAt }))
     setIsLoggedIn(true)
     setUserEmail(email)
+    setUserVoterId(voterId)
   }
 
   return (
@@ -59,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated, // Lo pasamos aquí
       isInitializing, 
       userEmail, 
+      userVoterId,
       login, 
       logout 
     }}>

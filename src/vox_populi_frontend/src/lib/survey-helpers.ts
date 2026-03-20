@@ -17,6 +17,25 @@ import { questionsConfig, surveysConfig } from './survey-config'
 import { translations, Locale } from './i18n'
 import { surveyTranslations } from './survey-translations'
 
+function hasDeadlinePassed(deadlineIso: string): boolean {
+  const parts = deadlineIso.split("-")
+  if (parts.length !== 3) {
+    return false
+  }
+
+  const year = Number(parts[0])
+  const month = Number(parts[1])
+  const day = Number(parts[2])
+
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return false
+  }
+
+  // Se considera activa durante todo el dia indicado en deadlineIso.
+  const deadlineEnd = new Date(year, month - 1, day, 23, 59, 59, 999)
+  return Date.now() > deadlineEnd.getTime()
+}
+
 /**
  * Combina la configuración de preguntas con los textos traducidos
  * - questionsConfig: define IDs y lógica de saltos
@@ -55,10 +74,12 @@ export function getTranslatedSurveys(locale: Locale) {
   const surveyTexts = surveyTranslations[locale].surveys
   
   return surveysConfig.map(config => ({
+    status: config.status === "active" && config.deadlineIso && hasDeadlinePassed(config.deadlineIso)
+      ? "closed"
+      : config.status,
     id: config.id,
     title: surveyTexts[config.id].title,
     description: surveyTexts[config.id].description,
-    status: config.status,
     votes: config.votes,
     deadline: config.deadline
   }))

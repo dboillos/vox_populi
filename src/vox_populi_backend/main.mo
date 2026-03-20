@@ -1,25 +1,25 @@
-import Array "mo:base/Array";
 import Blob "mo:base/Blob";
 import Int "mo:base/Int";
-import Iter "mo:base/Iter";
 import List "mo:base/List";
 import Nat "mo:base/Nat";
-import Nat64 "mo:base/Nat64";
-import Nat8 "mo:base/Nat8";
 import Principal "mo:base/Principal";
-import Text "mo:base/Text";
 import Time "mo:base/Time";
 
-import Aggregations "./aggregations";
-import Types "./types";
-import Validation "./validation";
+import AuditService "./audit/audit_service";
+import IdentityRegistryService "./auth/identity_registry_service";
+import AuthService "./auth/auth_service";
+import ICHttpTypes "./infrastructure/ic_http_types";
+import SurveyConfig "./shared/survey_config";
+import Types "./shared/types";
+import VoteRuntimeService "./vote/vote_runtime_service";
+import Validation "./shared/validation";
 
 // Actor persistente del dominio de votaciones.
 //
 // Diseno general:
 // - Este archivo funciona como capa de orquestacion y API publica.
-// - Los tipos compartidos viven en types.mo.
-// - Las reglas de validacion viven en validation.mo.
+// - Los tipos compartidos viven en shared/types.mo.
+// - Las reglas de validacion viven en shared/validation.mo.
 // - Los calculos estadisticos viven en aggregations.mo.
 //
 // Objetivo de separacion:
@@ -39,62 +39,43 @@ persistent actor Self {
   public type GoogleIdentityClaims = Types.GoogleIdentityClaims;
   public type GoogleTokenValidation = Types.GoogleTokenValidation;
 
-  type HttpHeader = {
-    name : Text;
-    value : Text;
-  };
-
-  type HttpMethod = {
-    #get;
-    #head;
-    #post;
-  };
-
-  type HttpResponsePayload = {
-    status : Nat;
-    headers : [HttpHeader];
-    body : [Nat8];
-  };
-
-  type TransformArgs = {
-    response : HttpResponsePayload;
-    context : Blob;
-  };
-
-  type TransformContext = {
-    function : shared query (TransformArgs) -> async HttpResponsePayload;
-    context : Blob;
-  };
-
-  type HttpRequestArgs = {
-    url : Text;
-    max_response_bytes : ?Nat64;
-    headers : [HttpHeader];
-    body : [Nat8];
-    method : HttpMethod;
-    transform : ?TransformContext;
-  };
-
   // -----------------------------
   // Estado persistente del actor
   // -----------------------------
 
   // Contador incremental para generar identificadores de voto legibles.
-  stable var nextVoteId : Nat = 1;
+  var nextVoteId : Nat = 1;
   // Almacen principal de votos en lista enlazada.
   // Ventaja: insercion O(1) con List.push sin copiar todo el historico.
   // Nota: la lista guarda los votos mas recientes al inicio.
   // Enfoque de rendimiento del backend:
   // - Escritura (submitVote): O(1) por insercion.
   // - Lectura/cálculo (queries agregadas): O(n) sobre votos filtrados.
-  stable var storedVotes : List.List<Types.StoredVote> = List.nil<Types.StoredVote>();
+  var storedVotes : List.List<Types.StoredVote> = List.nil<Types.StoredVote>();
   // Version de la logica de negocio del cuestionario.
   // Se expone por auditoria en getAuditData.
   let surveyCodeVersion : Text = "1.0.0";
 
-  // Mapa de cardinalidad por pregunta (indexado desde questionId = 1).
-  // Ejemplo: la pregunta 1 permite 6 opciones (indices 0..5).
-  let questionOptionCounts : [Nat] = [6, 5, 4, 5, 4, 3, 4, 3, 3, 3, 3, 3];
+  // Sal secreta del backend para derivar identificadores seudonimos desde email.
+  // Piloto TFM: se inicializa una unica vez y queda persistida en estado estable.
+  var backendEmailSalt : Text = "";
+
+  // Se mantiene como estado estable por compatibilidad con upgrades previos.
+  // El valor inicial queda centralizado en shared/survey_config.mo.
+  var questionOptionCounts : [Nat] = SurveyConfig.questionOptionCounts;
+
+  // Espejo estable del indice de duplicados por (surveyId, voterId) -> voteId.
+  // Permite reconstruir lookup O(1) tras upgrade sin recorrer claves complejas.
+  var voteLookupEntries : List.List<(Text, Text, Nat)> = List.nil<(Text, Text, Nat)>();
+
+  // Registro estable de identidad validada -> pseudonimo opaco.
+  // Clave actual: email normalizado tras validacion OIDC.
+  var identityRegistryEntries : List.List<(Text, Text)> = List.nil<(Text, Text)>();
+
+  // Indices en memoria para consultas O(1).
+  transient var voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
+  transient var identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
+  transient var surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
   // Para que funcione, este canister debe estar en su propia lista de controladores:
@@ -105,58 +86,8 @@ persistent actor Self {
       cycles : Nat;
       memory_size : Nat;
     };
-    http_request : shared HttpRequestArgs -> async HttpResponsePayload;
-  };
-
-  // Convierte un Blob de bytes a cadena hexadecimal en minusculas.
-  // Usado para formatear el module_hash devuelto por canister_status.
-  func blobToHex(b : Blob) : Text {
-    let bytes = Blob.toArray(b);
-    let chars = ["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
-    var hex = "";
-    for (byte in bytes.vals()) {
-      let n = Nat8.toNat(byte);
-      hex #= chars[n / 16] # chars[n % 16];
-    };
-    hex
-  };
-
-  // Materializa solo los votos de una encuesta en orden de insercion.
-  // Se usa en endpoints que requieren array ordenado (p. ej. exportacion cruda).
-  func surveyVotesInInsertionOrder(surveyId : Text) : [Types.StoredVote] {
-    let surveyVotes = Aggregations.getVotesBySurvey(storedVotes, surveyId);
-    List.toArray(List.reverse(surveyVotes));
-  };
-
-  func extractJsonString(jsonText : Text, key : Text) : ?Text {
-    // Parser ligero para respuestas planas de tokeninfo.
-    // Nota: suficiente para claims escalares usados en este flujo TFM.
-    let marker = "\"" # key # "\":\"";
-    let splitByKey = Iter.toArray(Text.split(jsonText, #text marker));
-    if (splitByKey.size() < 2) {
-      return null;
-    };
-
-    let tail = splitByKey[1];
-    let splitByQuote = Iter.toArray(Text.split(tail, #text "\""));
-    if (splitByQuote.size() < 1) {
-      return null;
-    };
-
-    ?splitByQuote[0];
-  };
-
-  func isGoogleIssuer(issuer : Text) : Bool {
-    issuer == "https://accounts.google.com" or issuer == "accounts.google.com";
-  };
-
-  func invalidToken(reason : Text) : GoogleTokenValidation {
-    // Respuesta estándar de error para facilitar trazabilidad desde frontend.
-    {
-      isValid = false;
-      email = null;
-      reason = reason;
-    };
+    http_request : shared ICHttpTypes.HttpRequestArgs -> async ICHttpTypes.HttpResponsePayload;
+    raw_rand : shared () -> async Blob;
   };
 
   // ---------------------------------
@@ -182,8 +113,8 @@ persistent actor Self {
   // Errores funcionales (success = false):
   // - encuesta obligatoria, respuestas vacias, preguntas repetidas,
   //   respuestas fuera de rango o voto duplicado.
-  // Complejidad aproximada: O(n + m), donde n=answers, m=votos persistidos
-  // (solo cuando el bloqueo de duplicados esta activo).
+  // Complejidad aproximada: O(n), donde n=answers.
+  // Nota: el bloqueo de duplicados usa indice en memoria O(1) promedio.
   // Registra un voto con validacion de integridad del payload.
   // Flujo resumido:
   // 1) valida surveyId y que exista al menos una respuesta.
@@ -196,89 +127,25 @@ persistent actor Self {
     answers : [AnswerSelection],
     _timestamp : Nat,
   ) : async VoteResponse {
-    if (Text.size(surveyId) == 0) {
-      return {
-        success = false;
-        message = "El identificador de encuesta es obligatorio";
-        voteId = null;
-      };
-    };
+    let result = VoteRuntimeService.submitVoteWithIndexes(
+      voteLookup,
+      surveyVotesCache,
+      storedVotes,
+      nextVoteId,
+      voteLookupEntries,
+      surveyId,
+      voterId,
+      answers,
+      Principal.toText(caller),
+      Time.now(),
+      questionOptionCounts,
+    );
 
-    if (answers.size() == 0) {
-      return {
-        success = false;
-        message = "Debes responder al menos una pregunta";
-        voteId = null;
-      };
-    };
+    storedVotes := result.storedVotes;
+    nextVoteId := result.nextVoteId;
+    voteLookupEntries := result.voteLookupEntries;
 
-    if (Validation.hasDuplicateQuestion(answers)) {
-      return {
-        success = false;
-        message = "Hay preguntas repetidas en el voto";
-        voteId = null;
-      };
-    };
-
-    for (answer in answers.vals()) {
-      if (
-        not Validation.isValidQuestion(answer.questionId, questionOptionCounts)
-        or not Validation.isValidOption(answer.questionId, answer.optionIndex, questionOptionCounts)
-      ) {
-        return {
-          success = false;
-          message = "El voto contiene respuestas fuera de rango";
-          voteId = null;
-        };
-      };
-    };
-
-    // Si el cliente no aporta voterId, usamos el principal del caller como fallback.
-    let resolvedVoterId =
-      if (Text.size(voterId) == 0) {
-        Principal.toText(caller);
-      } else {
-        voterId;
-      };
-
-    // Bloqueo de voto duplicado por clave logica (surveyId, voterId).
-    // - voterId: identidad anonima del votante (derivada del email o fallback al caller).
-    // - vote.voteId: identificador interno del registro de voto ya guardado.
-    // Este control NO compara voteId porque voteId siempre es unico por registro;
-    // la regla de negocio es impedir un segundo voto de la misma identidad anonima
-    // dentro de la misma encuesta.
-    for (vote in List.toIter(storedVotes)) {
-      if (vote.surveyId == surveyId and vote.voterId == resolvedVoterId) {
-        return {
-          success = false;
-          message = "Este usuario ya ha votado en esta encuesta";
-          voteId = ?("vote-" # Nat.toText(vote.voteId));
-        };
-      };
-    };
-
-    // Tiempo de red del canister (ms epoch) derivado de Time.now() en nanosegundos.
-    let currentTimestamp = Int.abs(Time.now() / 1_000_000);
-
-    // Construimos el registro persistente del voto.
-    let newVote : Types.StoredVote = {
-      voteId = nextVoteId;
-      surveyId = surveyId;
-      voterId = resolvedVoterId;
-      timestamp = currentTimestamp;
-      answers = answers;
-    };
-
-    // Insercion O(1): anadimos al inicio sin copiar el historico completo.
-    // Este punto materializa la decision de priorizar escrituras baratas en ciclos.
-    storedVotes := List.push(newVote, storedVotes);
-    nextVoteId += 1;
-
-    {
-      success = true;
-      message = "Voto registrado correctamente";
-      voteId = ?("vote-" # Nat.toText(newVote.voteId));
-    };
+    result.response;
   };
 
   // -----------------------------
@@ -294,17 +161,11 @@ persistent actor Self {
   // - false en caso contrario.
   // Uso tipico:
   // - validaciones de UX antes de iniciar el formulario de votacion.
-  // Complejidad aproximada: O(m), m=votos persistidos en la encuesta.
+  // Complejidad aproximada: O(1) promedio (indice runtime de duplicados).
   // Consulta booleana para detectar si un identificador ya voto en una encuesta.
   // Se usa principalmente para UX (bloquear o avisar antes de entrar a votar).
   public query func hasUserVoted(surveyId : Text, voterId : Text) : async Bool {
-    for (vote in List.toIter(storedVotes)) {
-      if (vote.surveyId == surveyId and vote.voterId == voterId) {
-        return true;
-      };
-    };
-
-    false;
+    VoteRuntimeService.hasUserVoted(voteLookup, surveyId, voterId);
   };
 
   // API CONTRACT: validateInstitutionalEmail (query)
@@ -329,28 +190,7 @@ persistent actor Self {
   // - Esta fase valida semantica de claims.
   // - La validacion criptografica de firma JWT se incorporara en la siguiente iteracion.
   public query func validateGoogleIdentity(claims : GoogleIdentityClaims, expectedAudience : Text) : async Bool {
-    if (not claims.emailVerified) {
-      return false;
-    };
-
-    if (not Validation.isUocInstitutionalEmail(claims.email)) {
-      return false;
-    };
-
-    if (Text.size(expectedAudience) == 0 or claims.audience != expectedAudience) {
-      return false;
-    };
-
-    if (claims.issuer != "https://accounts.google.com" and claims.issuer != "accounts.google.com") {
-      return false;
-    };
-
-    let nowSec = Int.abs(Time.now() / 1_000_000_000);
-    if (claims.expiresAtSec <= nowSec) {
-      return false;
-    };
-
-    true;
+    AuthService.validateGoogleIdentity(claims, expectedAudience, Int.abs(Time.now() / 1_000_000_000));
   };
 
   // API CONTRACT: validateGoogleIdToken (update)
@@ -363,114 +203,27 @@ persistent actor Self {
   // - El backend consulta tokeninfo de Google para validar token firmado por Google.
   // - Se valida aud, iss, exp, email_verified y dominio @uoc.edu.
   public func validateGoogleIdToken(idToken : Text, expectedAudience : Text) : async GoogleTokenValidation {
-    if (Text.size(idToken) == 0) {
-      return invalidToken("id_token vacio");
-    };
+    let nowNs = Time.now();
+    let result = await AuthService.validateGoogleIdToken(
+      IC,
+      Principal.fromActor(Self),
+      backendEmailSalt,
+      nowNs,
+      idToken,
+      expectedAudience,
+    );
+    backendEmailSalt := result.backendEmailSalt;
 
-    if (Text.size(expectedAudience) == 0) {
-      return invalidToken("audiencia esperada vacia");
-    };
-
-    let endpoint = "https://oauth2.googleapis.com/tokeninfo?id_token=" # idToken;
-    // Validación delegada en Google: tokeninfo devuelve claims ya verificados por proveedor.
-    let request : HttpRequestArgs = {
-      url = endpoint;
-      max_response_bytes = ?4_096;
-      method = #get;
-      headers = [
-        {
-          name = "User-Agent";
-          value = "vox-populi-backend";
-        },
-      ];
-      body = [];
-      transform = null;
-    };
-
-    let response =
-      try {
-        // Outcall HTTPS con ciclos explícitos para cubrir coste de red en IC.
-        await (with cycles = 70_000_000_000) IC.http_request(request);
-      } catch (_) {
-        return invalidToken("fallo al consultar tokeninfo de Google");
-      };
-
-    if (response.status != 200) {
-      return invalidToken("Google tokeninfo rechazo el token");
-    };
-
-    let bodyText =
-      switch (Text.decodeUtf8(Blob.fromArray(response.body))) {
-        case (?text) { text };
-        case null { return invalidToken("respuesta tokeninfo no UTF-8") };
-      };
-
-    // 1) aud debe corresponder exactamente al OAuth client ID de esta app.
-    let aud =
-      switch (extractJsonString(bodyText, "aud")) {
-        case (?value) { value };
-        case null { return invalidToken("claim aud ausente") };
-      };
-
-    if (aud != expectedAudience) {
-      return invalidToken("aud invalido para este cliente OAuth");
-    };
-
-    // 2) iss debe ser Google para evitar tokens de emisores no confiables.
-    let issuer =
-      switch (extractJsonString(bodyText, "iss")) {
-        case (?value) { value };
-        case null { return invalidToken("claim iss ausente") };
-      };
-
-    if (not isGoogleIssuer(issuer)) {
-      return invalidToken("issuer no reconocido");
-    };
-
-    // 3) exp debe indicar que el token sigue vigente.
-    let expText =
-      switch (extractJsonString(bodyText, "exp")) {
-        case (?value) { value };
-        case null { return invalidToken("claim exp ausente") };
-      };
-
-    let exp =
-      switch (Nat.fromText(expText)) {
-        case (?value) { value };
-        case null { return invalidToken("claim exp invalido") };
-      };
-
-    let nowSec = Int.abs(Time.now() / 1_000_000_000);
-    if (exp <= nowSec) {
-      return invalidToken("token expirado");
-    };
-
-    // 4) email verificado y dominio institucional UOC.
-    let email =
-      switch (extractJsonString(bodyText, "email")) {
-        case (?value) { value };
-        case null { return invalidToken("claim email ausente") };
-      };
-
-    let emailVerified =
-      switch (extractJsonString(bodyText, "email_verified")) {
-        case (?value) { value == "true" };
-        case null { false };
-      };
-
-    if (not emailVerified) {
-      return invalidToken("email no verificado por Google");
-    };
-
-    if (not Validation.isUocInstitutionalEmail(email)) {
-      return invalidToken("dominio no permitido: solo @uoc.edu");
-    };
-
-    {
-      isValid = true;
-      email = ?email;
-      reason = "ok";
-    };
+    let identityResult = await IdentityRegistryService.attachPseudonymousIdentity(
+      IC,
+      backendEmailSalt,
+      nowNs,
+      result.validation,
+      identityRegistry,
+      identityRegistryEntries,
+    );
+    identityRegistryEntries := identityResult.identityRegistryEntries;
+    identityResult.validation;
   };
 
   // API CONTRACT: getAggregatedResults (query)
@@ -491,53 +244,7 @@ persistent actor Self {
   // Genera el payload agregado consumido por la pantalla de resultados.
   // Este endpoint concentra KPI globales y datasets de visualizacion.
   public query func getAggregatedResults(surveyId : Text) : async AggregatedResults {
-    let votes = Aggregations.getVotesBySurvey(storedVotes, surveyId);
-    var trustCount : Nat = 0;
-    var trustAnsweredCount : Nat = 0;
-    var icpCount : Nat = 0;
-    var icpAnsweredCount : Nat = 0;
-    var totalVotes : Nat = 0;
-
-    for (vote in List.toIter(votes)) {
-      totalVotes += 1;
-      switch (Aggregations.getAnswerIndex(vote.answers, 10)) {
-        case (?optionIndex) {
-          trustAnsweredCount += 1;
-          if (optionIndex == 0) {
-            trustCount += 1;
-          };
-        };
-        case null {};
-      };
-
-      switch (Aggregations.getAnswerIndex(vote.answers, 12)) {
-        case (?optionIndex) {
-          icpAnsweredCount += 1;
-          if (optionIndex == 0) {
-            icpCount += 1;
-          };
-        };
-        case null {};
-      };
-    };
-
-    // El objeto final combina:
-    // - conteos globales (totalVotes)
-    // - porcentajes (trust / icp)
-    // - metricas derivadas (horas medias, radar, matriz)
-    {
-      totalVotes = totalVotes;
-      blockchainTrustPercentage = Aggregations.percentage(trustCount, trustAnsweredCount);
-      averageHoursSaved = Aggregations.averageHoursSaved(votes);
-      toolDistribution = Aggregations.buildToolDistribution(votes);
-      impactRadar = Aggregations.buildImpactRadar(votes);
-      securityMatrix = [
-        Aggregations.buildSecurityRow(votes, 8, "uocId", true),
-        Aggregations.buildSecurityRow(votes, 9, "anonymousId", false),
-        Aggregations.buildSecurityRow(votes, 10, "immutability", false),
-      ];
-      icpPreference = Aggregations.percentage(icpCount, icpAnsweredCount);
-    };
+    VoteRuntimeService.getAggregatedResultsFromCache(surveyVotesCache, surveyId);
   };
 
   // API CONTRACT: getRawResponses (query)
@@ -553,17 +260,7 @@ persistent actor Self {
   // Devuelve respuestas crudas en orden de insercion.
   // Es util para exportaciones CSV o auditoria externa.
   public query func getRawResponses(surveyId : Text) : async [RawResponse] {
-    let votes = surveyVotesInInsertionOrder(surveyId);
-
-    Array.tabulate<RawResponse>(votes.size(), func(index : Nat) : RawResponse {
-      let vote = votes[index];
-      {
-        numero = index + 1;
-        voterId = vote.voterId;
-        timestamp = vote.timestamp;
-        answers = vote.answers;
-      };
-    });
+    VoteRuntimeService.getRawResponsesFromCache(surveyVotesCache, surveyId);
   };
 
   // API CONTRACT: getAuditData (update)
@@ -578,25 +275,7 @@ persistent actor Self {
   //     dfx canister update-settings vox_populi_backend --add-controller $(dfx canister id vox_populi_backend)
   // Metadatos tecnicos de trazabilidad del despliegue.
   public func getAuditData() : async AuditData {
-    let selfId = Principal.fromActor(Self);
-    var moduleHashText = "Error: canister no es su propio controlador";
-    var cyclesText = "No disponible";
-    try {
-      let status = await IC.canister_status({ canister_id = selfId });
-      moduleHashText := switch (status.module_hash) {
-        case (?hash) { blobToHex(hash) };
-        case null { "No desplegado" };
-      };
-      cyclesText := Nat.toText(status.cycles);
-    } catch (_) {
-      moduleHashText := "Error: configure el canister como su propio controlador";
-    };
-    {
-      canisterId = Principal.toText(selfId);
-      wasmModuleHash = moduleHashText;
-      cyclesBalance = cyclesText;
-      codeVersion = surveyCodeVersion;
-    };
+    await AuditService.getAuditData(IC, Principal.fromActor(Self), surveyCodeVersion);
   };
 
   // API CONTRACT: getModuleHash (update)
@@ -608,15 +287,7 @@ persistent actor Self {
   // - El backend debe ser controlador del canister consultado.
   //   Para el frontend: dfx canister update-settings vox_populi_frontend --add-controller $(dfx canister id vox_populi_backend)
   public func getModuleHash(canisterId : Principal) : async Text {
-    try {
-      let status = await IC.canister_status({ canister_id = canisterId });
-      switch (status.module_hash) {
-        case (?hash) { blobToHex(hash) };
-        case null { "No desplegado" };
-      };
-    } catch (_) {
-      "Error: el backend no es controlador de ese canister";
-    };
+    await AuditService.getModuleHash(IC, canisterId);
   };
 
   // API CONTRACT: greet (query)

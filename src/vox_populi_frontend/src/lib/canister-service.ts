@@ -59,6 +59,7 @@ export interface GoogleIdentityClaims {
 export interface GoogleTokenValidation {
   isValid: boolean
   email?: string
+  voterId?: string
   reason: string
 }
 
@@ -93,6 +94,7 @@ interface BackendActor {
   validateGoogleIdToken: (idToken: string, expectedAudience: string) => Promise<{
     isValid: boolean
     email: [] | [string]
+    voterId: [] | [string]
     reason: string
   }>
 }
@@ -195,15 +197,6 @@ function toBackendAnswers(answers: AnswerSelection[]) {
     questionId: BigInt(answer.questionId),
     optionIndex: BigInt(answer.optionIndex),
   }))
-}
-
-export async function deriveAnonymousId(email: string): Promise<string> {
-  const normalizedEmail = email.trim().toLowerCase()
-  const data = new TextEncoder().encode(normalizedEmail)
-  const digest = await crypto.subtle.digest("SHA-256", data)
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
 }
 
 export function buildAnswerSelections(answers: Record<number, string>, optionSets: Record<number, string[]>): AnswerSelection[] {
@@ -334,6 +327,7 @@ export const canisterService = {
     return {
       isValid: result.isValid,
       email: result.email[0],
+      voterId: result.voterId[0],
       reason: result.reason,
     }
   },

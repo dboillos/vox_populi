@@ -21,6 +21,11 @@ export class LoginError extends Error {
   }
 }
 
+export type LoginIdentity = {
+  email: string
+  voterId: string
+}
+
 type GoogleCredentialResponse = {
   credential?: string
 }
@@ -140,17 +145,55 @@ function requestGoogleIdToken(): Promise<string> {
   })
 }
 
-export async function loginWithGoogle(): Promise<string> {
+function normalizeIdToken(rawToken: string): string {
+  const trimmed = rawToken.trim()
+
+  if (trimmed.split(".").length === 3) {
+    return trimmed
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>
+
+    if (typeof parsed.id_token === "string" && parsed.id_token.split(".").length === 3) {
+      return parsed.id_token
+    }
+
+    if (typeof parsed.token === "string") {
+      const nested = parsed.token.trim()
+      if (nested.split(".").length === 3) {
+        return nested
+      }
+
+      if (nested.startsWith("{")) {
+        const nestedParsed = JSON.parse(nested) as Record<string, unknown>
+        if (typeof nestedParsed.id_token === "string" && nestedParsed.id_token.split(".").length === 3) {
+          return nestedParsed.id_token
+        }
+      }
+    }
+  } catch {
+    // Si no es JSON válido, devolvemos el token tal cual y la validación siguiente lo rechazará.
+  }
+
+  return trimmed
+}
+
+export async function loginWithGoogle(): Promise<LoginIdentity> {
   // Este método SOLO autentica identidad institucional.
   // No escribe votos ni genera aún el identificador de voto.
   await loadGoogleSdk()
 
   // 1) Obtener id_token firmado por Google en cliente.
-  const idToken = await requestGoogleIdToken()
+  const rawToken = await requestGoogleIdToken()
+  const idToken = normalizeIdToken(rawToken)
+  if (idToken.split(".").length !== 3) {
+    throw new LoginError("google_auth_failed", "Formato de id_token inválido")
+  }
   // 2) Delegar validación de seguridad al backend/canister.
   const validation = await canisterService.validateGoogleIdToken(idToken, GOOGLE_CLIENT_ID)
 
-  if (!validation.isValid || !validation.email) {
+  if (!validation.isValid || !validation.email || !validation.voterId) {
     if (validation.reason.includes("dominio")) {
       throw new LoginError("domain_not_allowed", validation.reason)
     }
@@ -166,11 +209,13 @@ export async function loginWithGoogle(): Promise<string> {
 
   // Modelo de anonimato :
   // - Aquí devolvemos email validado para mantener sesión de usuario.
-  // - En el momento de votar, el frontend transforma ese email en un
-  //   voterId anónimo mediante hash SHA-256 (deriveAnonymousId en canister-service).
+  // - En el momento de votar, se usa el voterId pseudónimo emitido por backend
+  //   tras validar el id_token de Google.
   // - El backend/blockchain persiste voterId, no el email.
-  // - Como el hash es unidireccional, desde voterId no se puede recuperar
-  //   el email original directamente.
+  // - El voterId publicado no deriva del email en frontend.
 
-  return normalizedEmail
+  return {
+    email: normalizedEmail,
+    voterId: validation.voterId,
+  }
 }

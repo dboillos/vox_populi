@@ -90,6 +90,7 @@ module {
   public type GoogleTokenValidation = {
     isValid : Bool;
     email : ?Text;
+    voterId : ?Text;
     reason : Text;
   };
 

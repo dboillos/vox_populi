@@ -18,7 +18,7 @@ import { LanguageSelector } from "@/components/layout/language-selector"
 import { ICPLogo } from "@/components/icons/icp-logo"
 import { LoginModal } from "@/components/login-modal"
 
-import { canisterService, deriveAnonymousId } from "@/lib/canister-service"
+import { canisterService } from "@/lib/canister-service"
 import { useLocale } from "@/lib/locale-context"
 import { useAuth } from "@/context/AuthContext"
 import { getTranslatedSurveys } from "@/lib/survey-helpers"
@@ -70,12 +70,12 @@ function LandingFooter() {
 // --- COMPONENTE PRINCIPAL ---
 export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
   const { locale, t } = useLocale()
-  const { isLoggedIn, login, userEmail } = useAuth()
+  const { isLoggedIn, login, userVoterId } = useAuth()
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showAlreadyVotedModal, setShowAlreadyVotedModal] = useState(false)
   
-  // ESTADO NUEVO: Guarda la función que el usuario quería ejecutar
-  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null)
+  // Guarda la intención del usuario para ejecutarla tras login.
+  const [pendingAction, setPendingAction] = useState<"vote" | "results" | null>(null)
   
   const surveys = getTranslatedSurveys(locale)
 
@@ -83,47 +83,40 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
     if (isLoggedIn) {
       action()
     } else {
-      setPendingAction(() => action) // Guardamos la "intención" (votar o resultados)
+      setPendingAction("results")
       setShowLoginModal(true)
     }
   }
 
-  const handleVoteAction = async () => {
-    if (!isLoggedIn) {
-      setPendingAction(() => () => {
-        void handleVoteAction()
-      })
+  const handleVoteAction = async (voterIdOverride?: string) => {
+    const effectiveVoterId = voterIdOverride ?? userVoterId
+    const hasFreshIdentity = typeof voterIdOverride === "string" && voterIdOverride.length > 0
+
+    if (!isLoggedIn && !hasFreshIdentity) {
+      setPendingAction("vote")
       setShowLoginModal(true)
       return
     }
 
-    if (!userEmail) {
-      setPendingAction(() => () => {
-        void handleVoteAction()
-      })
+    if (!effectiveVoterId) {
+      setPendingAction("vote")
       setShowLoginModal(true)
       return
     }
 
-    // NOTA (modo pruebas): aceptamos votos repetidos.
-    // Para reactivar el bloqueo previo de "ya votado", descomenta el bloque de abajo
-    // y elimina este onVote() directo.
-    onVote()
+    try {
+      const alreadyVoted = await canisterService.hasUserVoted("ai-uoc-2024", effectiveVoterId)
 
-    // try {
-    //   const anonymousId = await deriveAnonymousId(userEmail)
-    //   const alreadyVoted = await canisterService.hasUserVoted("ai-uoc-2024", anonymousId)
-    //
-    //   if (alreadyVoted) {
-    //     setShowAlreadyVotedModal(true)
-    //     return
-    //   }
-    //
-    //   onVote()
-    // } catch (error) {
-    //   console.error("[LandingPage] No se pudo validar si el usuario ya ha votado", error)
-    //   onVote()
-    // }
+      if (alreadyVoted) {
+        setShowAlreadyVotedModal(true)
+        return
+      }
+
+      onVote()
+    } catch (error) {
+      console.error("[LandingPage] No se pudo validar si el usuario ya ha votado", error)
+      onVote()
+    }
   }
 
   return (
@@ -194,15 +187,20 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
           setPendingAction(null) // Limpiamos si cierra sin loguearse
         }}
         mode="login"
-        onSuccess={(email) => {
-          login(email) // Guardamos la cookie
+        onSuccess={(identity) => {
+          login(identity.email, identity.voterId)
           setShowLoginModal(false)
           
           // EJECUCIÓN AUTOMÁTICA: Si había algo pendiente, lo lanzamos ahora
-          if (pendingAction) {
-            pendingAction()
-            setPendingAction(null)
+          if (pendingAction === "vote") {
+            void handleVoteAction(identity.voterId)
           }
+
+          if (pendingAction === "results") {
+            onResults()
+          }
+
+          setPendingAction(null)
         }}
       />
 

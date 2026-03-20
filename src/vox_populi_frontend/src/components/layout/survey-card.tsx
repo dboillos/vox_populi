@@ -30,6 +30,9 @@ export function SurveyCard({ survey, onVote, onResults, index }: SurveyCardProps
   const { t } = useLocale()
   const isActive = survey.status === "active"
   const isUpcoming = survey.status === "upcoming"
+  const isClosed = survey.status === "closed"
+  const canVote = isActive
+  const canViewResults = isActive || isClosed
 
   return (
     <motion.div
@@ -51,6 +54,11 @@ export function SurveyCard({ survey, onVote, onResults, index }: SurveyCardProps
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
                 <span className="w-2 h-2 bg-primary rounded-full animate-pulse" />
                 {t.surveyCard.active}
+              </span>
+            ) : isClosed ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-destructive/10 text-destructive text-sm font-medium">
+                <Clock className="w-3.5 h-3.5" />
+                {t.surveyCard.closed}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-sm font-medium">
@@ -77,10 +85,10 @@ export function SurveyCard({ survey, onVote, onResults, index }: SurveyCardProps
             </div>
           )}
 
-          <div className={`flex flex-wrap gap-3 pt-2 ${isUpcoming ? "opacity-50 pointer-events-none" : ""}`}>
+          <div className={`flex flex-wrap gap-3 pt-2 ${isUpcoming ? "opacity-50" : ""}`}>
             <Button
               onClick={onVote}
-              disabled={isUpcoming}
+              disabled={!canVote}
               className="flex-1 min-w-[120px] bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               <Vote className="w-4 h-4 mr-2" />
@@ -88,7 +96,7 @@ export function SurveyCard({ survey, onVote, onResults, index }: SurveyCardProps
             </Button>
             <Button
               onClick={onResults}
-              disabled={isUpcoming}
+              disabled={!canViewResults}
               variant="outline"
               className="flex-1 min-w-[120px] border-primary/30 text-primary hover:bg-primary/5"
             >

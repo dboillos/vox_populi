@@ -9,7 +9,7 @@ import { Progress } from "../../components/ui/progress"
 import { useAuth } from "../../context/AuthContext"
 import { useLocale } from "../../lib/locale-context"
 import { getQuestionOptionsByLocale, getTranslatedQuestions } from "../../lib/survey-helpers"
-import { buildAnswerSelections, canisterService, deriveAnonymousId } from "../../lib/canister-service"
+import { buildAnswerSelections, canisterService } from "../../lib/canister-service"
 
 // CORRECCIÓN: Nombre de interfaz actualizado para consistencia profesional
 interface SurveyPageProps {
@@ -20,7 +20,7 @@ interface SurveyPageProps {
 // CORRECCIÓN: Nombre de la función cambiado de SurveySection a SurveyPage
 export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
   const { locale, t } = useLocale()
-  const { userEmail } = useAuth()
+  const { userVoterId } = useAuth()
   const surveyQuestions = getTranslatedQuestions(locale)
   const optionSets = getQuestionOptionsByLocale(locale)
   
@@ -60,15 +60,14 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
       // Enviar voto al canister
       setIsSubmitting(true)
       try {
-        if (!userEmail) {
+        if (!userVoterId) {
           throw new Error("No hay usuario autenticado para registrar el voto")
         }
 
-        const anonymousId = await deriveAnonymousId(userEmail)
         const normalizedAnswers = buildAnswerSelections(answers, optionSets)
         const result = await canisterService.submitVote({
           surveyId: "ai-uoc-2024",
-          voterId: anonymousId,
+          voterId: userVoterId,
           answers: normalizedAnswers,
           timestamp: Date.now(),
         })
@@ -84,7 +83,7 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
         setIsSubmitting(false)
       }
     }
-  }, [answers, currentQuestion, currentQuestionIndex, onComplete, optionSets, surveyQuestions, totalQuestions, userEmail])
+  }, [answers, currentQuestion, currentQuestionIndex, onComplete, optionSets, surveyQuestions, totalQuestions, userVoterId])
 
   const handlePrevious = useCallback(() => {
     if (currentQuestionIndex > 0) {

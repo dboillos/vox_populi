@@ -32,6 +32,7 @@ export interface Translations {
   surveyCard: {
     active: string
     upcoming: string
+    closed: string
     votes: string
     until: string
     vote: string
@@ -209,6 +210,7 @@ export const translations: Record<Locale, Translations> = {
     surveyCard: {
       active: "Activa",
       upcoming: "Próximamente",
+      closed: "Finalizada",
       votes: "votos",
       until: "Hasta",
       vote: "Votar",
@@ -367,6 +369,7 @@ survey: {
     surveyCard: {
       active: "Active",
       upcoming: "Coming Soon",
+      closed: "Closed",
       votes: "votes",
       until: "Until",
       vote: "Vote",
@@ -525,6 +528,7 @@ survey: {
     surveyCard: {
       active: "Activa",
       upcoming: "Pròximament",
+      closed: "Finalitzada",
       votes: "vots",
       until: "Fins",
       vote: "Votar",

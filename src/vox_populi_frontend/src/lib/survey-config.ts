@@ -21,6 +21,7 @@ export interface SurveyConfig {
   status: "active" | "upcoming" | "closed"
   votes?: number
   deadline?: string
+  deadlineIso?: string
 }
 
 export const surveysConfig: SurveyConfig[] = [
@@ -28,7 +29,8 @@ export const surveysConfig: SurveyConfig[] = [
     id: "ai-uoc-2024", 
     status: "active", 
     votes: 1247, 
-    deadline: "15 Abril 2024" 
+    deadline: "15 Agosto 2026",
+    deadlineIso: "2026-08-15"
   },
   { 
     id: "sostenibilidad", 

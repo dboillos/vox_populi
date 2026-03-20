@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button"
 
 // Lógica y Contexto (Carpeta src/lib)
 import { useLocale } from "@/lib/locale-context"
-import { LoginError, loginWithGoogle } from "@/lib/login"
+import { LoginError, type LoginIdentity, loginWithGoogle } from "@/lib/login"
 
 interface LoginModalProps {
   isOpen: boolean
   onClose: () => void
-  onSuccess: (email: string) => void // CORRECCIÓN: Ahora espera un string
+  onSuccess: (identity: LoginIdentity) => void
   mode: "login" | "error"
 }
 
@@ -27,8 +27,8 @@ export function LoginModal({ isOpen, onClose, onSuccess, mode }: LoginModalProps
     setAuthError(null)
 
     try {
-      const email = await loginWithGoogle()
-      onSuccess(email)
+      const identity = await loginWithGoogle()
+      onSuccess(identity)
     } catch (error) {
       if (error instanceof LoginError && error.code === "domain_not_allowed") {
         setAuthError(t.login.domainError)

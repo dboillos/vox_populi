@@ -9,16 +9,25 @@ module {
   // -----------------------
   // Reglas de validacion
   // -----------------------
-  // Este modulo concentra validaciones puras (sin estado global).
+  // Este modulo concentra validaciones puras (sin estado global ni side effects).
 
-  // Valida que questionId exista dentro del cuestionario configurado.
-  // El rango valido es 1..questionOptionCounts.size().
+  // API CONTRACT: isValidQuestion
+  // Parametros:
+  // - questionId: identificador de pregunta (indexado desde 1).
+  // - questionOptionCounts: cardinalidad de opciones por pregunta.
+  // Resultado:
+  // - true cuando `questionId` cae en el rango configurado.
   public func isValidQuestion(questionId : Nat, questionOptionCounts : [Nat]) : Bool {
     questionId >= 1 and questionId <= questionOptionCounts.size();
   };
 
-  // Valida que optionIndex pertenezca al rango permitido de la pregunta.
-  // Ejemplo: si una pregunta tiene 4 opciones, los indices validos son 0..3.
+  // API CONTRACT: isValidOption
+  // Parametros:
+  // - questionId: identificador de pregunta (indexado desde 1).
+  // - optionIndex: opcion elegida (indexada desde 0).
+  // - questionOptionCounts: cardinalidad de opciones por pregunta.
+  // Resultado:
+  // - true cuando la opcion existe para esa pregunta.
   public func isValidOption(questionId : Nat, optionIndex : Nat, questionOptionCounts : [Nat]) : Bool {
     if (not isValidQuestion(questionId, questionOptionCounts)) {
       return false;
@@ -27,9 +36,13 @@ module {
     optionIndex < questionOptionCounts[questionId - 1];
   };
 
-  // Detecta si un mismo voto contiene la misma pregunta repetida.
-  // Implementacion O(n^2) suficiente para encuestas cortas.
-  // Ventaja: no requiere estructuras auxiliares ni hashing.
+  // API CONTRACT: hasDuplicateQuestion
+  // Parametros:
+  // - answers: respuestas normalizadas de un voto.
+  // Resultado:
+  // - true si existe al menos un `questionId` repetido.
+  // Complejidad:
+  // - O(n^2), suficiente para cuestionarios cortos.
   public func hasDuplicateQuestion(answers : [Types.AnswerSelection]) : Bool {
     if (answers.size() < 2) {
       return false;
@@ -46,8 +59,11 @@ module {
     false;
   };
 
-  // Valida si un correo institucional pertenece al dominio UOC.
-  // Normaliza solo ASCII para evitar rechazos por mayusculas.
+  // API CONTRACT: isUocInstitutionalEmail
+  // Parametros:
+  // - email: correo a validar.
+  // Resultado:
+  // - true cuando termina en `@uoc.edu` tras normalizacion a minusculas.
   public func isUocInstitutionalEmail(email : Text) : Bool {
     let normalized = Text.map(email, Prim.charToLower);
     Text.endsWith(normalized, #text "@uoc.edu");
