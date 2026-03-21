@@ -154,7 +154,7 @@ Complejidades relevantes:
 - Tipos compartidos: `src/vox_populi_backend/shared/types.mo`
 - Configuracion de encuesta compartida: `src/vox_populi_backend/shared/survey_config.mo`
 
-### Nota metodologica para TFM
+### Nota metodologica 
 
 Esta implementacion valida el token con Google en tiempo real via `tokeninfo` (validacion delegada en proveedor de identidad). Es una arquitectura valida para prototipo academico y despliegue controlado. Como trabajo futuro, se puede incorporar verificacion criptografica local de firma JWT (JWKS) dentro de la capa de backend/verificador dedicado.
 
