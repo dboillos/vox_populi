@@ -59,9 +59,14 @@ module {
   // API CONTRACT: buildGoogleTokenInfoRequest
   // Parametros:
   // - idToken: JWT emitido por Google Identity Services.
+  // - transformFn: funcion query del canister para normalizar respuesta y
+  //   reducir no determinismo entre replicas.
   // Resultado:
   // - request HTTP GET lista para consultar `tokeninfo`.
-  public func buildGoogleTokenInfoRequest(idToken : Text) : HttpRequestArgs {
+  public func buildGoogleTokenInfoRequest(
+    idToken : Text,
+    transformFn : shared query (TransformArgs) -> async HttpResponsePayload,
+  ) : HttpRequestArgs {
     {
       url = "https://oauth2.googleapis.com/tokeninfo?id_token=" # idToken;
       max_response_bytes = ?4_096;
@@ -73,7 +78,10 @@ module {
         },
       ];
       body = [];
-      transform = null;
+      transform = ?{
+        function = transformFn;
+        context = Blob.fromArray([]);
+      };
     };
   };
 };

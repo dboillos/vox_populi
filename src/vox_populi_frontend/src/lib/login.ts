@@ -24,6 +24,7 @@ export class LoginError extends Error {
 export type LoginIdentity = {
   email: string
   voterId: string
+  idToken: string
 }
 
 type GoogleCredentialResponse = {
@@ -217,5 +218,6 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
   return {
     email: normalizedEmail,
     voterId: validation.voterId,
+    idToken,
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { Vote, Shield, ChevronDown } from "lucide-react"
 
@@ -73,11 +73,32 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
   const { isLoggedIn, login, userVoterId } = useAuth()
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showAlreadyVotedModal, setShowAlreadyVotedModal] = useState(false)
+  const [reloginNotice, setReloginNotice] = useState<string | null>(null)
   
   // Guarda la intención del usuario para ejecutarla tras login.
   const [pendingAction, setPendingAction] = useState<"vote" | "results" | null>(null)
   
   const surveys = getTranslatedSurveys(locale)
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      return
+    }
+
+    const shouldForceRelogin = sessionStorage.getItem("voxpopuli_force_relogin")
+    if (shouldForceRelogin === "1") {
+      const reloginReason = sessionStorage.getItem("voxpopuli_relogin_reason")
+      sessionStorage.removeItem("voxpopuli_force_relogin")
+      sessionStorage.removeItem("voxpopuli_relogin_reason")
+
+      if (reloginReason == "session_expired") {
+        setReloginNotice(t.voteProgress.sessionExpired)
+      }
+
+      setPendingAction("vote")
+      setShowLoginModal(true)
+    }
+  }, [isLoggedIn, t.voteProgress.sessionExpired])
 
   const handleProtectedAction = (action: () => void) => {
     if (isLoggedIn) {
@@ -131,6 +152,11 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
             transition={{ duration: 0.6 }}
             className="text-center mb-12 lg:mb-16"
           >
+            {reloginNotice ? (
+              <p className="max-w-2xl mx-auto mb-4 rounded-lg border border-amber-300/50 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                {reloginNotice}
+              </p>
+            ) : null}
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-semibold text-foreground mb-4 text-balance">
               {t.landing.heroTitle}
             </h2>
@@ -186,9 +212,8 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
           setShowLoginModal(false)
           setPendingAction(null) // Limpiamos si cierra sin loguearse
         }}
-        mode="login"
         onSuccess={(identity) => {
-          login(identity.email, identity.voterId)
+          login(identity.email, identity.voterId, identity.idToken)
           setShowLoginModal(false)
           
           // EJECUCIÓN AUTOMÁTICA: Si había algo pendiente, lo lanzamos ahora

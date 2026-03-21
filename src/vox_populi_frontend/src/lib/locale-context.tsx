@@ -6,7 +6,7 @@ import { type Locale, translations, type Translations } from "./i18n"
 // ============================================================================
 // CONTEXTO DE IDIOMA
 // ============================================================================
-// Gestiona el idioma seleccionado y lo persiste en localStorage.
+// Gestiona el idioma seleccionado y lo persiste en sessionStorage.
 // El idioma por defecto es castellano (es).
 // ============================================================================
 
@@ -26,7 +26,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
 
   // Cargar idioma guardado al iniciar
   useEffect(() => {
-    const savedLocale = localStorage.getItem(LOCALE_KEY) as Locale | null
+    const savedLocale = sessionStorage.getItem(LOCALE_KEY) as Locale | null
     if (savedLocale && translations[savedLocale]) {
       setLocaleState(savedLocale)
     }
@@ -35,7 +35,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   // Guardar idioma cuando cambie
   const setLocale = (newLocale: Locale) => {
     setLocaleState(newLocale)
-    localStorage.setItem(LOCALE_KEY, newLocale)
+    sessionStorage.setItem(LOCALE_KEY, newLocale)
   }
 
   const t = translations[locale]

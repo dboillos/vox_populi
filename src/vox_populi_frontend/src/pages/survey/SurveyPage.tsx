@@ -2,9 +2,10 @@
 
 import { useState, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, ChevronRight, CheckCircle2, ArrowLeft } from "lucide-react"
+import { ChevronLeft, ChevronRight, CheckCircle2, ArrowLeft, AlertCircle } from "lucide-react"
 // CORRECCIÓN: Rutas relativas actualizadas (subimos dos niveles)
 import { Button } from "../../components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../../components/ui/dialog"
 import { Progress } from "../../components/ui/progress"
 import { useAuth } from "../../context/AuthContext"
 import { useLocale } from "../../lib/locale-context"
@@ -20,14 +21,25 @@ interface SurveyPageProps {
 // CORRECCIÓN: Nombre de la función cambiado de SurveySection a SurveyPage
 export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
   const { locale, t } = useLocale()
-  const { userVoterId } = useAuth()
+  const { userIdToken, logout } = useAuth()
   const surveyQuestions = getTranslatedQuestions(locale)
   const optionSets = getQuestionOptionsByLocale(locale)
+
+  const voteProgressSteps = [
+    t.voteProgress.stepIdentity,
+    t.voteProgress.stepDuplicate,
+    t.voteProgress.stepRegister,
+    t.voteProgress.stepFinalize,
+  ]
   
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [direction, setDirection] = useState(1) // 1 = forward, -1 = backward
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showVoteProgressModal, setShowVoteProgressModal] = useState(false)
+  const [voteProgressStep, setVoteProgressStep] = useState(0)
+  const [voteProgressStatus, setVoteProgressStatus] = useState<"running" | "success" | "error">("running")
+  const [voteProgressError, setVoteProgressError] = useState<string | null>(null)
 
   const currentQuestion = surveyQuestions[currentQuestionIndex]
   const totalQuestions = surveyQuestions.length
@@ -39,6 +51,32 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
       [currentQuestion.id]: option
     }))
   }, [currentQuestion.id])
+
+  const openVoteProgress = useCallback(() => {
+    setVoteProgressStep(0)
+    setVoteProgressStatus("running")
+    setVoteProgressError(null)
+    setShowVoteProgressModal(true)
+  }, [])
+
+  const markVoteProgressError = useCallback((message?: string) => {
+    setVoteProgressStatus("error")
+    setVoteProgressError(message ?? t.voteProgress.genericError)
+  }, [t.voteProgress.genericError])
+
+  const startVoteProgressSimulation = useCallback(() => {
+    return window.setInterval(() => {
+      setVoteProgressStep(prev => (prev < 2 ? prev + 1 : prev))
+    }, 850)
+  }, [])
+
+  const forceReloginForVote = useCallback(() => {
+    // Marca una reautenticacion obligatoria para que landing abra el modal.
+    sessionStorage.setItem("voxpopuli_force_relogin", "1")
+    sessionStorage.setItem("voxpopuli_relogin_reason", "session_expired")
+    logout()
+    onBack()
+  }, [logout, onBack])
 
   const handleNext = useCallback(async () => {
     const selectedOption = answers[currentQuestion.id]
@@ -59,31 +97,61 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
     } else {
       // Enviar voto al canister
       setIsSubmitting(true)
+      openVoteProgress()
+      const progressTimerId = startVoteProgressSimulation()
+
       try {
-        if (!userVoterId) {
-          throw new Error("No hay usuario autenticado para registrar el voto")
+        if (!userIdToken) {
+          clearInterval(progressTimerId)
+          setVoteProgressStep(0)
+          markVoteProgressError(t.voteProgress.sessionExpired)
+          await new Promise(resolve => setTimeout(resolve, 850))
+          setShowVoteProgressModal(false)
+          forceReloginForVote()
+          return
         }
 
         const normalizedAnswers = buildAnswerSelections(answers, optionSets)
         const result = await canisterService.submitVote({
           surveyId: "ai-uoc-2024",
-          voterId: userVoterId,
+          idToken: userIdToken,
           answers: normalizedAnswers,
           timestamp: Date.now(),
         })
 
         if (result.success) {
+          clearInterval(progressTimerId)
+          setVoteProgressStep(3)
+          setVoteProgressStatus("success")
+          await new Promise(resolve => setTimeout(resolve, 700))
+          setShowVoteProgressModal(false)
           onComplete()
         } else {
-          console.error("[SurveyPage] Error al enviar voto:", result.message)
+          if (result.message.startsWith("Autenticacion invalida:")) {
+            clearInterval(progressTimerId)
+            setVoteProgressStep(0)
+            markVoteProgressError(t.voteProgress.sessionExpired)
+            await new Promise(resolve => setTimeout(resolve, 850))
+            setShowVoteProgressModal(false)
+            forceReloginForVote()
+            return
+          }
+
+          clearInterval(progressTimerId)
+          setVoteProgressStep(2)
+          markVoteProgressError(result.message)
         }
       } catch (error) {
+        clearInterval(progressTimerId)
+        setVoteProgressStep(1)
+        markVoteProgressError()
         console.error("[SurveyPage] Error de conexión:", error)
       } finally {
+        clearInterval(progressTimerId)
         setIsSubmitting(false)
       }
     }
-  }, [answers, currentQuestion, currentQuestionIndex, onComplete, optionSets, surveyQuestions, totalQuestions, userVoterId])
+  }, [answers, currentQuestion, currentQuestionIndex, forceReloginForVote, markVoteProgressError, onComplete, openVoteProgress, optionSets, startVoteProgressSimulation, surveyQuestions, t.voteProgress.sessionExpired, totalQuestions, userIdToken])
 
   const handlePrevious = useCallback(() => {
     if (currentQuestionIndex > 0) {
@@ -114,6 +182,34 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
   const questionCounterText = t.survey.questionOf
     .replace("{current}", String(currentQuestionIndex + 1))
     .replace("{total}", String(totalQuestions))
+
+  const voteStepState = (index: number) => {
+    if (voteProgressStatus === "success") {
+      return "done"
+    }
+
+    if (voteProgressStatus === "error") {
+      if (index < voteProgressStep) {
+        return "done"
+      }
+
+      if (index == voteProgressStep) {
+        return "error"
+      }
+
+      return "pending"
+    }
+
+    if (index < voteProgressStep) {
+      return "done"
+    }
+
+    if (index == voteProgressStep) {
+      return "running"
+    }
+
+    return "pending"
+  }
 
   return (
     <section className="snap-section min-h-screen bg-background flex flex-col">
@@ -227,6 +323,54 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
           </div>
         </div>
       </footer>
+
+      <Dialog open={showVoteProgressModal}>
+        <DialogContent className="max-w-md" aria-describedby="vote-progress-description">
+          <DialogHeader>
+            <DialogTitle>{t.voteProgress.title}</DialogTitle>
+            <DialogDescription id="vote-progress-description">
+              {t.voteProgress.description}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="mt-4 space-y-3">
+            {voteProgressSteps.map((stepLabel, index) => {
+              const state = voteStepState(index)
+
+              return (
+                <div key={stepLabel} className="flex items-center gap-3 rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+                  {state === "done" ? (
+                    <CheckCircle2 className="h-5 w-5 flex-shrink-0 text-emerald-600" />
+                  ) : state === "running" ? (
+                    <div className="h-5 w-5 flex-shrink-0 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                  ) : state === "error" ? (
+                    <AlertCircle className="h-5 w-5 flex-shrink-0 text-destructive" />
+                  ) : (
+                    <div className="h-5 w-5 flex-shrink-0 rounded-full border border-border" />
+                  )}
+
+                  <span className={state === "pending" ? "text-sm text-muted-foreground" : "text-sm text-foreground"}>
+                    {stepLabel}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+
+          {voteProgressStatus === "error" && voteProgressError ? (
+            <div className="mt-4 space-y-3">
+              <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+                {voteProgressError}
+              </p>
+              <div className="flex justify-end">
+                <Button variant="outline" onClick={() => setShowVoteProgressModal(false)}>
+                  {t.voteProgress.close}
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

@@ -162,6 +162,19 @@ export interface Translations {
     viewResults: string
     close: string
   }
+
+  // Vote progress modal
+  voteProgress: {
+    title: string
+    description: string
+    stepIdentity: string
+    stepDuplicate: string
+    stepRegister: string
+    stepFinalize: string
+    close: string
+    genericError: string
+    sessionExpired: string
+  }
   
   // Radar chart axes
   radar: {
@@ -328,6 +341,17 @@ survey: {
       viewResults: "Ver resultados",
       close: "Cerrar"
     },
+    voteProgress: {
+      title: "Procesando tu voto",
+      description: "Estamos validando y registrando tu voto de forma segura.",
+      stepIdentity: "Validando tu identidad con Google",
+      stepDuplicate: "Comprobando la politica de voto unico",
+      stepRegister: "Registrando tu voto en blockchain",
+      stepFinalize: "Finalizando la confirmacion",
+      close: "Cerrar",
+      genericError: "No se pudo registrar tu voto. Intentalo de nuevo.",
+      sessionExpired: "Tu sesion de voto expiro. Inicia sesion de nuevo para continuar.",
+    },
     radar: {
       quality: "Calidad (Pregunta 4)",
       ethics: "Ética (Pregunta 5)",
@@ -487,6 +511,17 @@ survey: {
       viewResults: "View results",
       close: "Close"
     },
+    voteProgress: {
+      title: "Processing your vote",
+      description: "We are validating and registering your vote safely.",
+      stepIdentity: "Validating your Google identity",
+      stepDuplicate: "Checking duplicate-vote policy",
+      stepRegister: "Registering your vote on blockchain",
+      stepFinalize: "Finalizing confirmation",
+      close: "Close",
+      genericError: "We could not register your vote. Please try again.",
+      sessionExpired: "Your voting session expired. Please sign in again to continue.",
+    },
     radar: {
       quality: "Quality (Question 4)",
       ethics: "Ethics (Question 5)",
@@ -645,6 +680,17 @@ survey: {
       alreadyVotedDescription: "El teu vot ja va ser registrat i no pots tornar a votar a la mateixa enquesta.",
       viewResults: "Veure resultats",
       close: "Tancar"
+    },
+    voteProgress: {
+      title: "Processant el teu vot",
+      description: "Estem validant i registrant el teu vot de manera segura.",
+      stepIdentity: "Validant la teva identitat de Google",
+      stepDuplicate: "Comprovant la politica de vot unic",
+      stepRegister: "Registrant el teu vot a blockchain",
+      stepFinalize: "Finalitzant la confirmacio",
+      close: "Tancar",
+      genericError: "No hem pogut registrar el teu vot. Torna-ho a provar.",
+      sessionExpired: "La teva sessio de vot ha expirat. Inicia sessio de nou per continuar.",
     },
     radar: {
       quality: "Qualitat (Pregunta 4)",

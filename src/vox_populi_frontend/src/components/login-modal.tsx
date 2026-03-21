@@ -1,7 +1,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Mail, Shield, AlertCircle, CheckCircle2 } from "lucide-react"
+import { X, Mail, Shield, CheckCircle2 } from "lucide-react"
 
 // Componentes de UI (Carpeta src/components/ui)
 import { Button } from "@/components/ui/button"
@@ -14,10 +14,9 @@ interface LoginModalProps {
   isOpen: boolean
   onClose: () => void
   onSuccess: (identity: LoginIdentity) => void
-  mode: "login" | "error"
 }
 
-export function LoginModal({ isOpen, onClose, onSuccess, mode }: LoginModalProps) {
+export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   const { t } = useLocale()
   const [isLoading, setIsLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
@@ -66,74 +65,55 @@ export function LoginModal({ isOpen, onClose, onSuccess, mode }: LoginModalProps
                 <X className="w-5 h-5" />
               </button>
 
-              {mode === "login" ? (
-                <>
-                  <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Shield className="w-8 h-8 text-primary" />
-                    </div>
-                    <h2 className="text-2xl font-semibold text-foreground mb-2">
-                      {t.login.secureAccess}
-                    </h2>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {t.login.loginDescription}
-                    </p>
+              <>
+                <div className="text-center mb-8">
+                  <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Shield className="w-8 h-8 text-primary" />
                   </div>
+                  <h2 className="text-2xl font-semibold text-foreground mb-2">
+                    {t.login.secureAccess}
+                  </h2>
+                  <p className="text-muted-foreground leading-relaxed">
+                    {t.login.loginDescription}
+                  </p>
+                </div>
 
-                  <div className="space-y-4">
-                    <Button
-                      onClick={handleGoogleLogin}
-                      disabled={isLoading}
-                      className="w-full h-12 text-base font-medium bg-primary text-primary-foreground"
-                    >
-                      {isLoading ? (
-                        <motion.div
-                          animate={{ rotate: 360 }}
-                          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                          className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                        />
-                      ) : (
-                        <>
-                          <Mail className="w-5 h-5 mr-2" />
-                          {t.login.continueWithGoogle}
-                        </>
-                      )}
-                    </Button>
-
-                    <div className="flex items-start gap-3 p-4 bg-accent/50 rounded-lg">
-                      <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {t.login.privacyNoteParts.before}
-                        <span className="font-semibold text-foreground mx-1">
-                           {t.login.privacyNoteParts.anonymousIdTerm}
-                        </span>
-                        {t.login.privacyNoteParts.after}
-                      </p>
-                    </div>
-
-                    {authError ? (
-                      <p className="text-sm text-destructive leading-relaxed">{authError}</p>
-                    ) : null}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-center mb-8">
-                    <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <AlertCircle className="w-8 h-8 text-destructive" />
-                    </div>
-                    <h2 className="text-2xl font-semibold text-foreground mb-2">
-                      {t.login.accessDenied}
-                    </h2>
-                    <p className="text-muted-foreground leading-relaxed">
-                      {t.login.accessDeniedDescription}
-                    </p>
-                  </div>
-                  <Button onClick={onClose} variant="outline" className="w-full h-12">
-                    {t.login.close}
+                <div className="space-y-4">
+                  <Button
+                    onClick={handleGoogleLogin}
+                    disabled={isLoading}
+                    className="w-full h-12 text-base font-medium bg-primary text-primary-foreground"
+                  >
+                    {isLoading ? (
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
+                      />
+                    ) : (
+                      <>
+                        <Mail className="w-5 h-5 mr-2" />
+                        {t.login.continueWithGoogle}
+                      </>
+                    )}
                   </Button>
-                </>
-              )}
+
+                  <div className="flex items-start gap-3 p-4 bg-accent/50 rounded-lg">
+                    <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      {t.login.privacyNoteParts.before}
+                      <span className="font-semibold text-foreground mx-1">
+                         {t.login.privacyNoteParts.anonymousIdTerm}
+                      </span>
+                      {t.login.privacyNoteParts.after}
+                    </p>
+                  </div>
+
+                  {authError ? (
+                    <p className="text-sm text-destructive leading-relaxed">{authError}</p>
+                  ) : null}
+                </div>
+              </>
             </div>
           </motion.div>
         </>

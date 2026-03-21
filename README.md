@@ -15,42 +15,104 @@ Repositorio oficial: https://github.com/dboillos/vox_populi
 - Login institucional con Google OIDC y validacion de `id_token` en backend.
 - Regla de integridad: no se permiten votos duplicados por `(surveyId, voterId)`.
 
-## Autenticacion OIDC (TFM)
+## Medidas de seguridad implementadas
 
 ### Objetivo
 
-Garantizar que solo miembros de la comunidad UOC puedan votar, sin almacenar el email en blockchain.
+Garantizar voto institucional verificable y resistente a manipulacion de cliente, preservando anonimato de la identidad en blockchain.
 
-### Flujo implementado
+### 1) Autenticacion OIDC validada en backend
 
-1. El frontend inicia Google Identity Services y solicita un `id_token` JWT.
-2. El frontend envia `id_token` al backend junto con `expectedAudience` (OAuth Client ID).
-3. El backend consulta `https://oauth2.googleapis.com/tokeninfo?id_token=...` mediante HTTPS outcall.
-4. El backend valida los campos de seguridad:
-	 - `aud` coincide con el client ID esperado.
-	 - `iss` es Google (`accounts.google.com` o `https://accounts.google.com`).
-	 - `exp` no esta caducado.
-	 - `email_verified` es `true`.
-	 - `email` pertenece a `@uoc.edu`.
-5. Si la validacion es correcta, el backend devuelve email validado y `voterId` pseudonimo.
-6. El voto se registra con `voterId` (no con email).
+1. El frontend obtiene `id_token` con Google Identity Services.
+2. El backend valida el token mediante `tokeninfo` de Google.
+3. Se validan claims de seguridad obligatorias:
+	- `aud` coincide con el cliente OAuth esperado.
+	- `iss` pertenece a Google.
+	- `exp` no esta caducado.
+	- `email_verified` es `true`.
+	- el dominio permitido es `@uoc.edu`.
 
-### Mejora de privacidad implementada (v4)
+### 2) Escritura de voto protegida
 
-- Version inicial: `voterId` derivado como hash de email en frontend.
-- Version actual (piloto TFM): `voterId` opaco aleatorio, asignado por backend y persistido en un registro de identidad estable.
-- El `salt_secreto_backend` se mantiene para endurecer semillas/fallbacks internos.
+1. `submitVote` exige `idToken` y no acepta identidad de voto elegida por cliente.
+2. El backend deriva la identidad efectiva (`voterId`) tras validacion OIDC.
+3. Solo se persiste voto cuando la autenticacion es valida.
 
-Propiedad de privacidad obtenida:
+Propiedad conseguida:
 
-- No existe una funcion publica determinista `email -> voterId`; el pseudonimo se asigna una vez y se reutiliza.
-- En blockchain se persiste `voterId` pseudonimo y no el email.
-- Si se exfiltra un subconjunto de votos on-chain, no se puede verificar offline una lista de emails contra esos `voterId`.
+- La identidad de voto la decide el backend, no el navegador.
 
-Notas tecnicas:
+### 3) Prevencion de voto duplicado
 
-- El registro interno de identidad se indexa por email normalizado validado por OIDC y guarda solo `voterId` opaco.
-- La comprobacion de voto duplicado se hace por indice en backend `(surveyId, voterId)`.
+Regla de negocio:
+
+- Un mismo `voterId` no puede votar dos veces en la misma encuesta (`surveyId`).
+
+Implementacion:
+
+- Indice de duplicados en memoria O(1) promedio con espejo estable para upgrades.
+- Rechazo funcional cuando ya existe voto previo para `(surveyId, voterId)`.
+
+### 4) Privacidad de identidad
+
+1. El email no se persiste en blockchain como identidad de voto.
+2. Se usa `voterId` pseudonimo opaco, asignado por backend y persistido en registro estable.
+3. No existe endpoint publico determinista `email -> voterId`.
+
+Explicacion criptografica (hash + salt):
+
+- En un esquema de seudonimizacion por derivacion, se concatena el email con un `salt` secreto del backend y se aplica una funcion hash criptografica.
+- El resultado (`voterId`) es de una sola via: se puede calcular desde `email + salt`, pero no es reversible para recuperar el email original.
+- Con `salt` secreto se evita la comparacion directa entre sistemas y se dificulta el uso de tablas precalculadas.
+
+Matiz importante de seguridad:
+
+- No se afirma imposibilidad matematica absoluta, sino inviabilidad computacional bajo el modelo de amenaza considerado (hash robusto, salt secreto y sin fuga de claves).
+
+Nota de implementacion en este proyecto:
+
+- La estrategia principal es `voterId` opaco no determinista emitido por backend; esto evita exponer una derivacion publica del email y mantiene la separacion entre identidad institucional y voto on-chain.
+
+### 5) Determinismo en HTTPS outcalls
+
+Problema mitigado:
+
+- Diferencias menores en respuestas HTTP externas pueden afectar consenso de subred.
+
+Mitigacion implementada:
+
+1. `transformGoogleTokenInfoResponse` normaliza respuesta de `tokeninfo`.
+2. Se eliminan headers volatiles.
+3. Se conserva solo JSON canonico con claims necesarias (`aud`, `iss`, `exp`, `email`, `email_verified`).
+4. Para errores HTTP, se conserva `status` con cuerpo vacio.
+
+### 6) Gestion de expiracion de token y re-login
+
+1. Si `submitVote` devuelve autenticacion invalida/expirada, el frontend fuerza re-login.
+2. Se limpia sesion local, se vuelve a landing y se abre modal de login automaticamente.
+3. Se muestra aviso visual de sesion expirada antes de continuar.
+
+### 7) Almacenamiento de sesion en navegador
+
+Politica aplicada:
+
+- El estado de sesion se guarda en `sessionStorage` (no en `localStorage`).
+
+Claves relevantes:
+
+1. `voxpopuli_session` (email, voterId, idToken, expiresAt).
+2. `voxpopuli_locale` (idioma activo).
+3. `voxpopuli_force_relogin` y `voxpopuli_relogin_reason` (flujo de reautenticacion).
+
+Propiedad conseguida:
+
+- Al cerrar pestana/sesion del navegador, se elimina el estado persistido.
+
+### 8) Transparencia de UX durante escritura
+
+1. El envio de voto muestra modal de progreso por pasos (estado `pending/running/done/error`).
+2. Los textos de modales se resuelven por i18n (ES/EN/CA).
+3. En error, el usuario recibe motivo explicito y accion de recuperacion.
 
 ### Escalabilidad de consultas y no duplicidad
 
@@ -154,33 +216,45 @@ src/vox_populi_backend/
 	`- voting_service.mo
 ```
 
-## Como verificar
+## Verificacion desde dashboard de auditoria
 
-Objetivo: comprobar que el codigo desplegado (hash on-chain) coincide con el binario WASM compilado desde una version concreta del repositorio.
+Objetivo:
 
-### 1) Preparar entorno
+- Comprobar que el codigo que se ejecuta on-chain coincide con el WASM compilado desde una revision concreta del repositorio.
 
-Instala herramientas segun tu sistema operativo:
+### Datos que muestra el dashboard de auditoria
 
-- Git: https://git-scm.com/downloads
-- DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/
+En la pantalla de auditoria se muestran, por canister (backend/frontend):
 
-Verifica instalacion:
+1. `Canister ID`.
+2. `On-chain module hash`.
+3. `Version actual de la app` y referencias de release/commit (si aplica).
+
+Estos campos son la referencia para comparar integridad de despliegue.
+
+### Pasos de comprobacion recomendados
+
+1) Copiar datos on-chain desde dashboard
+
+- Abrir la pantalla de auditoria de la app.
+- Copiar `Canister ID` y `On-chain module hash` de backend y frontend.
+
+2) Preparar entorno local
 
 ```bash
 git --version
 dfx --version
 ```
 
-### 2) Clonar y fijar version exacta
+3) Clonar repositorio y fijar revision auditada
 
 ```bash
 git clone https://github.com/dboillos/vox_populi.git
-cd vox_pop
+cd vox_populi
 git checkout <tag-o-commit-a-auditar>
 ```
 
-### 3) Compilar y calcular hashes locales
+4) Compilar y calcular hash local del WASM
 
 ```bash
 dfx build
@@ -188,18 +262,17 @@ shasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm
 shasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm
 ```
 
-### 4) Obtener hashes on-chain
+5) Comparar hash local vs hash on-chain
 
-Opcion recomendada para usuario final:
+- Si el SHA-256 local coincide exactamente con `On-chain module hash`, el binario desplegado corresponde a la revision auditada.
+- Si no coincide, el canister en ejecucion no corresponde a esa compilacion local.
 
-- Abrir la pantalla de auditoria de la app y copiar los valores de "On-chain module hash" para backend y frontend.
+### Verificacion complementaria por CLI (opcional)
 
-Opcion CLI (requiere permisos de controller del canister consultado):
+Cuando se dispone de permisos adecuados de controller:
 
 ```bash
 dfx canister status <canister-id>
 ```
 
-### 5) Comparar
-
-Si los SHA-256 locales coinciden exactamente con los hashes on-chain, el binario desplegado corresponde a esa version del codigo.
+Sirve para contrastar metadatos on-chain adicionales, pero la comparacion principal para integridad de codigo es el module hash.

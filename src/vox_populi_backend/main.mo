@@ -3,11 +3,13 @@ import Int "mo:base/Int";
 import List "mo:base/List";
 import Nat "mo:base/Nat";
 import Principal "mo:base/Principal";
+import Text "mo:base/Text";
 import Time "mo:base/Time";
 
 import AuditService "./audit/audit_service";
 import IdentityRegistryService "./auth/identity_registry_service";
 import AuthService "./auth/auth_service";
+import TokenInfoParser "./auth/tokeninfo_parser";
 import ICHttpTypes "./infrastructure/ic_http_types";
 import SurveyConfig "./shared/survey_config";
 import Types "./shared/types";
@@ -55,6 +57,11 @@ persistent actor Self {
   // Version de la logica de negocio del cuestionario.
   // Se expone por auditoria en getAuditData.
   let surveyCodeVersion : Text = "1.0.0";
+  // Client ID OAuth esperado para validar id_token en backend.
+  // En este piloto TFM se fija en codigo para que submitVote no dependa
+  // de parametros manipulables desde cliente.
+  let expectedGoogleAudience : Text =
+    "765842824522-ar0t6cn0uet2qmf9v0lvp0q2p09t24b2.apps.googleusercontent.com";
 
   // Sal secreta del backend para derivar identificadores seudonimos desde email.
   // Piloto TFM: se inicializa una unica vez y queda persistida en estado estable.
@@ -90,6 +97,100 @@ persistent actor Self {
     raw_rand : shared () -> async Blob;
   };
 
+  // API CONTRACT: transformGoogleTokenInfoResponse (query)
+  // Objetivo:
+  // - Normalizar respuestas de tokeninfo para reducir no determinismo de
+  //   HTTPS outcalls en consenso de subred.
+  // Estrategia:
+  // - Elimina headers volatiles.
+  // - Si status != 200, preserva solo status y cuerpo vacio.
+  // - Si status == 200, conserva un JSON canonico con claims minimas usadas
+  //   por la validacion (`aud`, `iss`, `exp`, `email`, `email_verified`).
+  public query func transformGoogleTokenInfoResponse(args : ICHttpTypes.TransformArgs) : async ICHttpTypes.HttpResponsePayload {
+    if (args.response.status != 200) {
+      return {
+        status = args.response.status;
+        headers = [];
+        body = [];
+      };
+    };
+
+    let bodyText =
+      switch (Text.decodeUtf8(Blob.fromArray(args.response.body))) {
+        case (?decoded) { decoded };
+        case null {
+          return {
+            status = 200;
+            headers = [];
+            body = [];
+          };
+        };
+      };
+
+    let compactBodyText = TokenInfoParser.compactJson(bodyText);
+    let aud = TokenInfoParser.extractJsonString(compactBodyText, "aud");
+    let iss = TokenInfoParser.extractJsonString(compactBodyText, "iss");
+    let exp = TokenInfoParser.extractJsonNat(compactBodyText, "exp");
+    let email = TokenInfoParser.extractJsonString(compactBodyText, "email");
+    let emailVerified = TokenInfoParser.extractJsonBool(compactBodyText, "email_verified");
+
+    func renderTextOrNull(value : ?Text) : Text {
+      switch (value) {
+        case (?text) { "\"" # text # "\"" };
+        case null { "null" };
+      };
+    };
+
+    func renderNatOrNull(value : ?Nat) : Text {
+      switch (value) {
+        case (?natValue) { Nat.toText(natValue) };
+        case null { "null" };
+      };
+    };
+
+    let canonicalBody =
+      "{"
+      # "\"aud\":" # renderTextOrNull(aud)
+      # ",\"iss\":" # renderTextOrNull(iss)
+      # ",\"exp\":" # renderNatOrNull(exp)
+      # ",\"email\":" # renderTextOrNull(email)
+      # ",\"email_verified\":" # (if (emailVerified == ?true) { "true" } else { "false" })
+      # "}";
+
+    {
+      status = 200;
+      headers = [];
+      body = Blob.toArray(Text.encodeUtf8(canonicalBody));
+    };
+  };
+
+  // Flujo OIDC reutilizable para endpoints que requieran identidad validada.
+  // Devuelve `GoogleTokenValidation` con `voterId` pseudonimo si procede.
+  func validateAndAttachIdentity(idToken : Text, expectedAudience : Text) : async GoogleTokenValidation {
+    let nowNs = Time.now();
+    let result = await AuthService.validateGoogleIdToken(
+      IC,
+      transformGoogleTokenInfoResponse,
+      Principal.fromActor(Self),
+      backendEmailSalt,
+      nowNs,
+      idToken,
+      expectedAudience,
+    );
+    backendEmailSalt := result.backendEmailSalt;
+
+    let identityResult = await IdentityRegistryService.attachPseudonymousIdentity(
+      IC,
+      backendEmailSalt,
+      nowNs,
+      result.validation,
+      identityRegistry,
+      identityRegistryEntries,
+    );
+    identityRegistryEntries := identityResult.identityRegistryEntries;
+    identityResult.validation;
+  };
+
   // ---------------------------------
   // Endpoint de escritura (update call)
   // ---------------------------------
@@ -97,7 +198,7 @@ persistent actor Self {
   // API CONTRACT: submitVote (update)
   // Parametros:
   // - surveyId: identificador logico de la encuesta.
-  // - voterId: identificador anonimo del votante; si viene vacio, se usa caller.
+  // - idToken: JWT emitido por Google Identity Services.
   // - answers: lista normalizada de respuestas (questionId, optionIndex).
   // - _timestamp: campo legado enviado por cliente (actualmente se ignora).
   //   El backend usa tiempo de red del canister para evitar manipulacion del reloj cliente.
@@ -111,22 +212,43 @@ persistent actor Self {
   // - nextVoteId se incrementa en 1.
   // - se devuelve voteId con formato "vote-<n>".
   // Errores funcionales (success = false):
+  // - id_token invalido o expirado.
   // - encuesta obligatoria, respuestas vacias, preguntas repetidas,
   //   respuestas fuera de rango o voto duplicado.
   // Complejidad aproximada: O(n), donde n=answers.
   // Nota: el bloqueo de duplicados usa indice en memoria O(1) promedio.
-  // Registra un voto con validacion de integridad del payload.
+  // Registra un voto con autenticacion OIDC obligatoria.
   // Flujo resumido:
-  // 1) valida surveyId y que exista al menos una respuesta.
-  // 2) valida duplicados y rangos de pregunta/opcion.
-  // 3) resuelve voterId (si viene vacio, usa caller).
-  // 4) persiste el voto y devuelve voteId.
+  // 1) valida id_token de Google y obtiene voterId pseudonimo estable.
+  // 2) valida surveyId y payload de respuestas.
+  // 3) valida duplicados y persiste.
   public shared ({ caller }) func submitVote(
     surveyId : Text,
-    voterId : Text,
+    idToken : Text,
     answers : [AnswerSelection],
     _timestamp : Nat,
   ) : async VoteResponse {
+    let validation = await validateAndAttachIdentity(idToken, expectedGoogleAudience);
+    if (not validation.isValid) {
+      return {
+        success = false;
+        message = "Autenticacion invalida: " # validation.reason;
+        voteId = null;
+      };
+    };
+
+    let resolvedVoterId =
+      switch (validation.voterId) {
+        case (?voterId) { voterId };
+        case null {
+          return {
+            success = false;
+            message = "No se pudo derivar identidad de voto";
+            voteId = null;
+          };
+        };
+      };
+
     let result = VoteRuntimeService.submitVoteWithIndexes(
       voteLookup,
       surveyVotesCache,
@@ -134,7 +256,7 @@ persistent actor Self {
       nextVoteId,
       voteLookupEntries,
       surveyId,
-      voterId,
+      resolvedVoterId,
       answers,
       Principal.toText(caller),
       Time.now(),
@@ -203,27 +325,7 @@ persistent actor Self {
   // - El backend consulta tokeninfo de Google para validar token firmado por Google.
   // - Se valida aud, iss, exp, email_verified y dominio @uoc.edu.
   public func validateGoogleIdToken(idToken : Text, expectedAudience : Text) : async GoogleTokenValidation {
-    let nowNs = Time.now();
-    let result = await AuthService.validateGoogleIdToken(
-      IC,
-      Principal.fromActor(Self),
-      backendEmailSalt,
-      nowNs,
-      idToken,
-      expectedAudience,
-    );
-    backendEmailSalt := result.backendEmailSalt;
-
-    let identityResult = await IdentityRegistryService.attachPseudonymousIdentity(
-      IC,
-      backendEmailSalt,
-      nowNs,
-      result.validation,
-      identityRegistry,
-      identityRegistryEntries,
-    );
-    identityRegistryEntries := identityResult.identityRegistryEntries;
-    identityResult.validation;
+    await validateAndAttachIdentity(idToken, expectedAudience);
   };
 
   // API CONTRACT: getAggregatedResults (query)

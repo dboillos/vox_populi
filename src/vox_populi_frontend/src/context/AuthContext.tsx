@@ -9,7 +9,8 @@ interface AuthContextType {
   isInitializing: boolean
   userEmail: string | null
   userVoterId: string | null
-  login: (email: string, voterId: string) => void
+  userIdToken: string | null
+  login: (email: string, voterId: string, idToken: string) => void
   logout: () => void
 }
 
@@ -19,20 +20,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userVoterId, setUserVoterId] = useState<string | null>(null)
+  const [userIdToken, setUserIdToken] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
 
   // Creamos la propiedad derivada
   const isAuthenticated = isLoggedIn
 
   const logout = useCallback(() => {
-    localStorage.removeItem(SESSION_KEY)
+    sessionStorage.removeItem(SESSION_KEY)
     setIsLoggedIn(false)
     setUserEmail(null)
     setUserVoterId(null)
+    setUserIdToken(null)
   }, [])
 
   useEffect(() => {
-    const stored = localStorage.getItem(SESSION_KEY)
+    const stored = sessionStorage.getItem(SESSION_KEY)
     if (stored) {
       try {
         const session = JSON.parse(stored)
@@ -40,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsLoggedIn(true)
           setUserEmail(session.email)
           setUserVoterId(session.voterId ?? null)
+          setUserIdToken(session.idToken ?? null)
         } else {
           logout()
         }
@@ -50,12 +54,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsInitializing(false)
   }, [logout])
 
-  const login = (email: string, voterId: string) => {
+  const login = (email: string, voterId: string, idToken: string) => {
     const expiresAt = Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
-    localStorage.setItem(SESSION_KEY, JSON.stringify({ email, voterId, expiresAt }))
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ email, voterId, idToken, expiresAt }))
     setIsLoggedIn(true)
     setUserEmail(email)
     setUserVoterId(voterId)
+    setUserIdToken(idToken)
   }
 
   return (
@@ -65,6 +70,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isInitializing, 
       userEmail, 
       userVoterId,
+      userIdToken,
       login, 
       logout 
     }}>

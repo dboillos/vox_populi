@@ -19,7 +19,7 @@ export function AppRoutes() {
   const { isInitializing } = useAuth()
   const [showSuccessModal, setShowSuccessModal] = useState(false)
 
-  // 1. Pantalla de carga mientras se verifica la sesión en el Canister/LocalStorage
+  // 1. Pantalla de carga mientras se verifica la sesion en el Canister/sessionStorage
   if (isInitializing) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">

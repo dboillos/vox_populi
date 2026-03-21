@@ -56,6 +56,7 @@ module {
   // - validacion OIDC + salt efectivo a persistir en estado estable.
   public func validateGoogleIdToken(
     ic : ICManagement,
+    transformFn : shared query (ICHttpTypes.TransformArgs) -> async ICHttpTypes.HttpResponsePayload,
     selfId : Principal,
     existingSalt : Text,
     nowNs : Int,
@@ -76,7 +77,7 @@ module {
       };
     };
 
-    let request = ICHttpTypes.buildGoogleTokenInfoRequest(idToken);
+    let request = ICHttpTypes.buildGoogleTokenInfoRequest(idToken, transformFn);
 
     let response =
       try {
