@@ -21,6 +21,7 @@ Repositorio oficial: https://github.com/dboillos/vox_populi
 
 Garantizar voto institucional verificable y resistente a manipulacion de cliente, preservando anonimato de la identidad en blockchain.
 
+
 ### 1) Autenticacion OIDC validada en backend
 
 1. El frontend obtiene `id_token` con Google Identity Services.
