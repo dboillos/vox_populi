@@ -15,7 +15,7 @@ Repositorio oficial: https://github.com/dboillos/vox_populi
 - Login institucional con Google OIDC y validacion de `id_token` en backend.
 - Regla de integridad: no se permiten votos duplicados por `(surveyId, voterId)`.
 
-## Medidas de seguridad implementadas
+## Medidas de seguridad implementadas 
 
 ### Objetivo
 
