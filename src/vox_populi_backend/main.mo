@@ -69,7 +69,7 @@ persistent actor Self {
 
   // Se mantiene como estado estable por compatibilidad con upgrades previos.
   // El valor inicial queda centralizado en shared/survey_config.mo.
-  var questionOptionCounts : [Nat] = SurveyConfig.questionOptionCounts;
+  transient let questionOptionCounts : [Nat] = SurveyConfig.questionOptionCounts;
 
   // Espejo estable del indice de duplicados por (surveyId, voterId) -> voteId.
   // Permite reconstruir lookup O(1) tras upgrade sin recorrer claves complejas.
@@ -80,9 +80,9 @@ persistent actor Self {
   var identityRegistryEntries : List.List<(Text, Text)> = List.nil<(Text, Text)>();
 
   // Indices en memoria para consultas O(1).
-  transient var voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
-  transient var identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
-  transient var surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
+  transient let voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
+  transient let identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
+  transient let surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
   // Para que funcione, este canister debe estar en su propia lista de controladores:
