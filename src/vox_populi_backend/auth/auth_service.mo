@@ -1,6 +1,5 @@
 import Blob "mo:base/Blob";
 import Int "mo:base/Int";
-import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 
 import AuthFlow "./auth_flow";
@@ -47,7 +46,6 @@ module {
   // API CONTRACT: validateGoogleIdToken
   // Parametros:
   // - ic: interfaz de red al Management Canister.
-  // - selfId: principal del backend para semilla fallback de salt.
   // - existingSalt: salt actual persistido (puede venir vacio).
   // - nowNs: tiempo actual en nanosegundos.
   // - idToken: JWT emitido por Google Identity Services.
@@ -57,7 +55,6 @@ module {
   public func validateGoogleIdToken(
     ic : ICManagement,
     transformFn : shared query (ICHttpTypes.TransformArgs) -> async ICHttpTypes.HttpResponsePayload,
-    selfId : Principal,
     existingSalt : Text,
     nowNs : Int,
     idToken : Text,
@@ -77,12 +74,19 @@ module {
       };
     };
 
+    // Construye el HTTPS outcall hacia tokeninfo de Google.
+    // El `transformFn` canoniza la respuesta para reducir no determinismo entre replicas.
     let request = ICHttpTypes.buildGoogleTokenInfoRequest(idToken, transformFn);
 
     let response =
       try {
+        // `http_request` en el management canister requiere cycles adjuntos.
+        // Si no hay saldo/coste suficiente o falla la red, esta llamada puede lanzar.
+        // El valor se fija de forma conservadora para evitar rechazos por coste variable.
         await (with cycles = 70_000_000_000) ic.http_request(request);
       } catch (_) {
+        // Error temporal de infraestructura (no invalida el token por si mismo).
+        // Se traduce a respuesta funcional para no propagar traps al caller.
         return {
           validation = AuthHelpers.invalidToken("fallo al consultar tokeninfo de Google");
           backendEmailSalt = existingSalt;
@@ -107,14 +111,38 @@ module {
         };
       };
 
-    let maybeRandomBlob =
+    let maxRawRandAttempts : Nat = 3;
+
+    func fetchRandomWithRetries(remainingAttempts : Nat) : async ?Blob {
       try {
         ?(await ic.raw_rand());
       } catch (_) {
+        if (remainingAttempts <= 1) {
+          null;
+        } else {
+          await fetchRandomWithRetries(remainingAttempts - 1);
+        };
+      };
+    };
+
+    let maybeRandomBlob =
+      if (Text.size(existingSalt) > 0) {
         null;
+      } else {
+        await fetchRandomWithRetries(maxRawRandAttempts);
       };
 
-    let activeSalt = SaltManager.ensureBackendEmailSalt(existingSalt, selfId, nowNs, maybeRandomBlob);
+    let maybeActiveSalt = SaltManager.ensureBackendEmailSalt(existingSalt, maybeRandomBlob);
+    let activeSalt =
+      switch (maybeActiveSalt) {
+        case (?salt) { salt };
+        case null {
+          return {
+            validation = AuthHelpers.invalidToken("servicio temporalmente no disponible: no se pudo inicializar salt seguro");
+            backendEmailSalt = existingSalt;
+          };
+        };
+      };
     let nowSec = Int.abs(nowNs / 1_000_000_000);
 
     {

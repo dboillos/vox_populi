@@ -171,7 +171,6 @@ persistent actor Self {
     let result = await AuthService.validateGoogleIdToken(
       IC,
       transformGoogleTokenInfoResponse,
-      Principal.fromActor(Self),
       backendEmailSalt,
       nowNs,
       idToken,
