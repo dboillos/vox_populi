@@ -49,11 +49,21 @@ echo -e "\n[5/5] --- INICIANDO AUDITORÍA DE INTEGRIDAD ---"
 HASH_BACKEND_LOCAL=$(sha256sum .dfx/ic/canisters/vox_populi_backend/vox_populi_backend.wasm | awk '{print $1}')
 HASH_BACKEND_RED=$(dfx canister --network ic --identity anonymous info vox_populi_backend | grep "Module hash" | sed 's/.*0x//')
 
+echo -e "\n--- BACKEND DETALLES ---"
+echo "HASH LOCAL: $HASH_BACKEND_LOCAL"
+echo "HASH RED:   $HASH_BACKEND_RED"
+
 # --- VERIFICACIÓN FRONTEND ---
 find src/vox_populi_frontend/dist -type f ! -name ".ic-assets.json5" -exec sha256sum {} + | awk '{print $1}' | LC_ALL=C sort > $TEMP_LOCAL
 dfx canister --network ic --identity anonymous call vox_populi_frontend list '(record {})' | \
 awk '/record \{/,/\};/ { if ($0 ~ /sha256 = opt blob/) hash=$0; if ($0 ~ /content_encoding = "identity"/) print hash }' | \
 sed 's/.*blob "\(.*\)".*/\1/' | sed 's/\\//g' | LC_ALL=C sort > $TEMP_RED
+
+echo -e "\n--- FRONTEND DETALLES (Hashes de archivos) ---"
+echo "LOCAL:"
+cat $TEMP_LOCAL
+echo "RED:"
+cat $TEMP_RED
 
 # === RESULTADO FINAL ===
 echo -e "\n======================================="
@@ -72,7 +82,7 @@ if cmp -s "$TEMP_LOCAL" "$TEMP_RED"; then
     VERDICT_FRONTEND=true
 else
     echo -e "\033[0;31m[FAIL] FRONTEND NO COINCIDE\033[0m"
-    echo "Diferencias encontradas:"
+    echo "Diferencias encontradas (diff):"
     diff $TEMP_LOCAL $TEMP_RED
 fi
 
