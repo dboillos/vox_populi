@@ -17,6 +17,7 @@ Repositorio oficial: https://github.com/dboillos/vox_populi
 
 ## Medidas de seguridad implementadas 
 
+
 ### Objetivo
 
 Garantizar voto institucional verificable y resistente a manipulacion de cliente, preservando anonimato de la identidad en blockchain.
