@@ -1,84 +1,116 @@
 #!/bin/bash
-# Ubicación: /audit/deploy.sh (Host)
+# Ubicación: Raíz del proyecto (vox_populi/deploy.sh)
+# Uso: ./deploy.sh v1.X.X
 
-if [ -z "$1" ]; then
-    echo -e "\033[0;31mError: Proporciona un tag (ej: v1.2.62)\033[0m"
+VERSION=$1
+if [ -z "$VERSION" ]; then
+    echo -e "\033[0;31m[!] Error: Debes especificar una versión (ej: ./deploy.sh v1.2.70)\033[0m"
     exit 1
 fi
 
-NEW_TAG=$1
+# --- LÓGICA DE RUTAS INTELIGENTE ---
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
+if [[ "$SCRIPT_DIR" == */audit ]]; then
+    ROOT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
+    AUDIT_PATH="$SCRIPT_DIR"
+else
+    ROOT_DIR="$SCRIPT_DIR"
+    AUDIT_PATH="$SCRIPT_DIR/audit"
+fi
+cd "$ROOT_DIR"
 
-# --- FASE 0: PRE-FLIGHT & BUILD ---
-echo -e "\n\033[1;34m[1/6] FASE 0: VALIDANDO REQUISITOS DEL HOST\033[0m"
+echo -e "\n\033[1;35m===============================================================\033[0m"
+echo -e "\033[1;35m             SISTEMA DE DESPLIEGUE TOTAL VOX POPULI            \033[0m"
+echo -e "\033[1;35m===============================================================\033[0m"
 
-# 1. Check Docker
+# --- FASE 0: COMPROBACIÓN DE HERRAMIENTAS ---
+echo -e "\n\033[1;34m[1/7] FASE 0: VERIFICANDO REQUISITOS DEL HOST\033[0m"
+
 if ! docker info > /dev/null 2>&1; then
-    echo -e "\033[0;31m[!] Error: Docker no está corriendo.\033[0m"; exit 1
+    echo -e "\033[0;31m[!] ERROR: Docker no está operativo.\033[0m"; exit 1
 fi
+echo -e "\033[0;32m[OK] Docker detectado.\033[0m"
 
-# 2. Check DFX en Host (Necesario para Fase 2)
 if ! command -v dfx &> /dev/null; then
-    echo -e "\033[0;31m[!] Error: dfx no está instalado en el Host (necesario para deploy).\033[0m"; exit 1
+    echo -e "\033[0;31m[!] ERROR: dfx no está instalado.\033[0m"; exit 1
 fi
+echo -e "\033[0;32m[OK] dfx detectado.\033[0m"
 
-# 3. Check Git en Host (Necesario para Fase 4)
-if ! command -v git &> /dev/null; then
-    echo -e "\033[0;31m[!] Error: git no está instalado en el Host.\033[0m"; exit 1
+FILES=("$AUDIT_PATH/audit.sh" "$AUDIT_PATH/internal_audit.sh" "$AUDIT_PATH/Dockerfile" "$AUDIT_PATH/get_network_manifest.sh")
+for file in "${FILES[@]}"; do
+    if [ ! -f "$file" ]; then
+        echo -e "\033[0;31m[!] ERROR: Falta '$file'.\033[0m"; exit 1
+    fi
+done
+chmod +x "$AUDIT_PATH"/*.sh
+echo -e "\033[0;32m[OK] Scripts de auditoría listos.\033[0m"
+
+# --- FASE 1: LIMPIEZA DE CACHÉ ---
+echo -e "\n\033[1;34m[2/7] FASE 1: LIMPIEZA DE ARTEFACTOS PREVIOS\033[0m"
+rm -rf .dfx/ic/canisters/vox_populi_backend
+rm -rf .dfx/ic/canisters/vox_populi_frontend
+mkdir -p .dfx/ic/canisters/vox_populi_backend
+echo "Caché purgada para evitar falsos positivos."
+
+# --- FASE 2: COMPILACIÓN EN DOCKER ---
+echo -e "\n\033[1;34m[3/7] FASE 2: COMPILANDO WASM DENTRO DE DOCKER\033[0m"
+docker build -t vox_populi_auditor "$AUDIT_PATH" > /dev/null 2>&1
+
+docker run --rm -v "$ROOT_DIR":/project -w /project vox_populi_auditor \
+    /bin/bash -c "dfx build --network ic vox_populi_backend"
+
+WASM_LOCAL=".dfx/ic/canisters/vox_populi_backend/vox_populi_backend.wasm"
+if [ ! -f "$WASM_LOCAL" ]; then
+    echo -e "\033[0;31m[!] ERROR: Docker no generó el WASM.\033[0m"; exit 1
 fi
+echo -e "\033[0;32m[OK] WASM generado por Docker con éxito.\033[0m"
 
-# Construir/Actualizar imagen de auditoría
-echo -e "\033[0;32mActualizando entorno de auditoría Docker...\033[0m"
-docker build -t vox_populi_auditor .
-chmod +x internal_audit.sh get_network_manifest.sh
-
-# --- FASE 1: COMPILACIÓN (100% DOCKER) ---
-echo -e "\n\033[1;34m[2/6] FASE 1: COMPILACIÓN BACKEND (DOCKER)\033[0m"
-# Forzamos el uso del binario dfx INTERNO del contenedor
-docker run --rm \
-    -v "$SCRIPT_DIR/..":/project \
-    --entrypoint /bin/bash \
-    vox_populi_auditor -c "rm -rf .dfx/ic/canisters/vox_populi_backend && dfx build --network ic vox_populi_backend"
-
-# --- FASE 2: DESPLIEGUE (HOST + IDENTIDAD) ---
-echo -e "\n\033[1;34m[3/6] FASE 2: DESPLIEGUE A MAINNET\033[0m"
+# --- FASE 3: INSTALACIÓN FORZADA EN LA RED (IC) ---
+echo -e "\n\033[1;34m[4/7] FASE 3: INSTALACIÓN FORZADA EN LA RED (IC)\033[0m"
 dfx identity use prod_deployer
-export DFX_WARNING=-mainnet_plaintext_identity
 
-# Instalamos el WASM que Docker acaba de generar
-dfx canister --network ic install vox_populi_backend --mode upgrade --wasm "../.dfx/ic/canisters/vox_populi_backend/vox_populi_backend.wasm" --wasm-memory-persistence keep
-dfx deploy --network ic vox_populi_frontend --no-wallet
+echo "Subiendo binario de Docker a vox_populi_backend..."
+# Usamos flags largos para evitar el error '-w' y añadimos la persistencia de memoria exigida por IC
+dfx canister --network ic install vox_populi_backend \
+    --mode upgrade \
+    --wasm "$WASM_LOCAL" \
+    --wasm-memory-persistence keep
 
-# --- FASE 3: FIRMA (DOCKER) ---
-echo -e "\n\033[1;34m[4/6] FASE 3: GENERANDO FIRMA CRIPTOGRÁFICA (DOCKER)\033[0m"
-docker run --rm \
-    -v "$SCRIPT_DIR/..":/project \
-    -w /project/audit \
-    --entrypoint /bin/bash \
-    vox_populi_auditor -c "
-    FRONTEND_DIST=\$(find /project -name 'index.html' | grep -E 'dist|build' | head -n 1 | xargs dirname)
-    cd \"\$FRONTEND_DIST\" && find . -type f ! -name '*.map' ! -name '*.json5' ! -name '*.json' | sort | while read -r file; do
-        hash=\$(sha256sum \"\$file\" | awk '{print \$1}')
-        echo \"\$hash  \${file#./}\"
-    done > /project/audit/assets.manifest
-    cd /project/audit && sha256sum assets.manifest | awk '{print \$1}' > assets.hash
-"
+if [ $? -ne 0 ]; then
+    echo -e "\033[0;31m[!] ERROR en el upgrade del backend.\033[0m"; exit 1
+fi
 
-# --- FASE 4: GIT (HOST) ---
-echo -e "\n\033[1;34m[5/6] FASE 4: NOTARÍA GIT\033[0m"
-cd ..
+echo "Desplegando Frontend..."
+dfx deploy --network ic vox_populi_frontend
+
+# --- FASE 4: NOTARÍA GIT ---
+echo -e "\n\033[1;34m[5/7] FASE 4: REGISTRO Y TAG EN GIT\033[0m"
+if command -v sha256sum &> /dev/null; then
+    HASH_WASM=$(sha256sum "$WASM_LOCAL" | awk '{print $1}')
+else
+    HASH_WASM=$(shasum -a 256 "$WASM_LOCAL" | awk '{print $1}')
+fi
+
 git add .
-git commit -m "release: $NEW_TAG"
-git tag -a "$NEW_TAG" -m "Firma: $(cat audit/assets.hash 2>/dev/null)"
-git push origin main --tags --force
-cd audit
+git commit -m "release: $VERSION (Docker Build: $HASH_WASM)"
+git tag -a "$VERSION" -m "Build determinista $VERSION"
+git push origin main --tags
+echo -e "\033[0;32m[OK] Código notariado en GitHub.\033[0m"
 
-# --- FASE 5: AUDITORÍA FINAL (DOCKER) ---
-echo -e "\n\033[1;34m[6/6] FASE 5: VALIDACIÓN INTEGRAL EN CONTENEDOR\033[0m"
-docker run --rm \
-    -v "$SCRIPT_DIR/..":/project \
-    -w /project/audit \
-    --entrypoint /bin/bash \
-    vox_populi_auditor \
-    ./internal_audit.sh
+# --- FASE 5: LA PRUEBA DE LA VERDAD (AUDITORÍA) ---
+echo -e "\n\033[1;34m[6/7] FASE 5: VALIDACIÓN POST-DEPLOY (AUDIT-CHECK)\033[0m"
+"$AUDIT_PATH/audit.sh"
+AUDIT_EXIT=$?
+
+# --- FASE 6: RESUMEN FINAL ---
+echo -e "\n\033[1;34m[7/7] FASE 6: RESUMEN DEL PROCESO\033[0m"
+if [ $AUDIT_EXIT -eq 0 ]; then
+    echo -e "\033[1;32m===============================================================\033[0m"
+    echo -e "\033[1;32m   ✅ ÉXITO TOTAL: RED Y DOCKER COINCIDEN AL 100%              \033[0m"
+    echo -e "\033[1;32m===============================================================\033[0m"
+else
+    echo -e "\033[1;31m===============================================================\033[0m"
+    echo -e "\033[1;31m   ❌ ERROR: EL DESPLIEGUE TERMINÓ PERO FALLÓ LA AUDITORÍA     \033[0m"
+    echo -e "\033[1;31m===============================================================\033[0m"
+    exit 1
+fi
