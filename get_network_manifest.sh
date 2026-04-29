@@ -1,19 +1,17 @@
 #!/bin/bash
 # NOMBRE: get_network_manifest.sh
-# FUNCIÓN: Auditoría por descarga directa (Real-World Verification)
+# FUNCIÓN: Auditoría por descarga directa y normalización de orden.
 
 CANISTER_ID="4zjkp-mqaaa-aaaaj-qqwrq-cai"
 URL_BASE="https://${CANISTER_ID}.icp0.io"
 OUTPUT_MANIFEST="network_assets.manifest"
-TMP_DIR="network_audit_tmp"
 
-echo "Iniciando descarga de activos desde la red para auditoría..."
-mkdir -p $TMP_DIR
+echo "Descargando activos de la red para auditoría final..."
 
-# 1. Obtener la lista de archivos mediante el JSON que ya validamos
+# 1. Obtener la lista de archivos oficial del canister
 dfx canister --network ic --identity anonymous call $CANISTER_ID list '(record {})' --output json > raw_list.json
 
-# 2. Descargar cada archivo y calcular su hash real
+# 2. Descargar, hashear y ordenar alfabéticamente por NOMBRE (igual que find/sort)
 python3 << 'EOF'
 import json, subprocess, hashlib, os
 
@@ -21,28 +19,28 @@ with open("raw_list.json") as f:
     data = json.load(f)
 
 url_base = "https://4zjkp-mqaaa-aaaaj-qqwrq-cai.icp0.io"
-output = []
+assets = []
 
 for item in data:
     key = item.get("key", "")
     full_url = f"{url_base}{key}"
+    # Normalizar nombre (quitar / inicial)
     path_name = key[1:] if key.startswith("/") else key
     
-    # Descargamos el archivo real de la red
     try:
-        # Usamos curl para obtener el contenido exacto (manejando compresión si la hay)
+        # Descarga real vía curl
         content = subprocess.check_output(["curl", "-sL", full_url])
-        
-        # Calculamos SHA256 del contenido descargado
         h = hashlib.sha256(content).hexdigest()
-        output.append(f"{h} {path_name}")
-    except Exception as e:
+        assets.append((path_name, h))
+    except:
         continue
 
-output.sort()
+# ORDENAR POR NOMBRE (esencial para que el hash global coincida con el local)
+assets.sort(key=lambda x: x[0])
+
 with open("network_assets.manifest", "w") as f:
-    f.write("\n".join(output) + "\n")
+    for name, hash_val in assets:
+        f.write(f"{hash_val}  {name}\n")
 EOF
 
 rm raw_list.json
-rm -rf $TMP_DIR
