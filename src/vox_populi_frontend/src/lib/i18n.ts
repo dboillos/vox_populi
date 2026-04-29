@@ -216,7 +216,7 @@ export const translations: Record<Locale, Translations> = {
       poweredBy: "Powered by Internet Computer"
     },
     landing: {
-      heroTitle: "Tu voz, verificable en Blockchain",
+      heroTitle: "[CORREGIR] Tu voz, verificable en Blockchain",
       heroDescription: "Participa en encuestas institucionales con total transparencia. Cada voto es anónimo, inmutable y auditable en la red de Internet Computer.",
       footerText: "Plataforma de votacion descentralizada sobre Internet Computer"
     },

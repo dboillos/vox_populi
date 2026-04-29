@@ -71,7 +71,7 @@ export const mockResultsData = {
 
 export const mockRawResponses = Array.from({ length: 50 }, (_, i) => ({
   numero: i + 1,
-  p1: ["ChatGPT", "Gemini", "Claude", "Copilot", "Ninguna", "Otra"][Math.floor(Math.random() * 6)],
+  p1: ["ChatGPT", "Gemini", "Claude", "Copilot", "Ninguno", "Otro"][Math.floor(Math.random() * 6)],
   p2: ["Búsqueda inicial", "Conceptos", "PECs", "Revisión", "Código"][Math.floor(Math.random() * 5)],
   p3: ["Menos de 1h", "1-3h", "4-7h", "Más de 7h"][Math.floor(Math.random() * 4)],
   p4: [1, 2, 3, 4, 5][Math.floor(Math.random() * 5)],
