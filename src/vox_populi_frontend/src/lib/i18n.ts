@@ -321,6 +321,7 @@ survey: {
       accessDenied: "Acceso Denegado",
       accessDeniedDescription: "Para participar en esta encuesta necesitas una cuenta institucional @uoc.edu.",
       domainError: "El dominio de tu cuenta de Google no corresponde a la comunidad UOC. Si crees que esto es un error, contacta con soporte técnico.",
+      retry: "Reintentar",
       close: "Cerrar"
     },
     success: {
@@ -491,6 +492,7 @@ survey: {
       accessDenied: "Access Denied",
       accessDeniedDescription: "To participate in this survey, you need an institutional @uoc.edu account.",
       domainError: "Your Google account domain does not belong to the UOC community. If you believe this is an error, please contact technical support.",
+      retry: "Retry",
       close: "Close"
     },
     success: {
@@ -661,6 +663,7 @@ survey: {
       accessDenied: "Accés Denegat",
       accessDeniedDescription: "Per participar en aquesta enquesta necessites un compte institucional @uoc.edu.",
       domainError: "El domini del teu compte de Google no correspon a la comunitat UOC. Si creus que això és un error, contacta amb suport tècnic.",
+      retry: "Reintentar",
       close: "Tancar"
     },
     success: {

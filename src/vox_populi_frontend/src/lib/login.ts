@@ -142,7 +142,7 @@ function requestGoogleIdToken(): Promise<string> {
     // Timeout defensivo para no dejar la promesa pendiente indefinidamente.
     setTimeout(() => {
       finish(() => reject(new LoginError("google_auth_failed", "Timeout al esperar respuesta de Google")))
-    }, 12000)
+    }, 30000)
   })
 }
 

@@ -39,6 +39,11 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     }
   }
 
+  const handleRetry = () => {
+    setAuthError(null)
+    handleGoogleLogin()
+  }
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -110,7 +115,17 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                   </div>
 
                   {authError ? (
-                    <p className="text-sm text-destructive leading-relaxed">{authError}</p>
+                    <div className="space-y-3">
+                      <p className="text-sm text-destructive leading-relaxed">{authError}</p>
+                      <Button
+                        onClick={handleRetry}
+                        disabled={isLoading}
+                        variant="outline"
+                        className="w-full h-10 text-sm"
+                      >
+                        {t.login.retry}
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </>
