@@ -1,0 +1,5 @@
+      key = "/assets/index-3b23d6b7.css";
+      key = "/assets/index-8ae56f93.js";
+      key = "/favicon.ico";
+      key = "/index.html";
+      key = "/logo2.svg";
