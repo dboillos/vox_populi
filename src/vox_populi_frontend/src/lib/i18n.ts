@@ -138,6 +138,7 @@ export interface Translations {
     accessDenied: string
     accessDeniedDescription: string
     domainError: string
+    retry: string
     close: string
   }
   
@@ -216,7 +217,7 @@ export const translations: Record<Locale, Translations> = {
       poweredBy: "Powered by Internet Computer"
     },
     landing: {
-      heroTitle: "[CORREGIR] Tu voz, verificable en Blockchain",
+      heroTitle: "Tu voz, verificable en Blockchain",
       heroDescription: "Participa en encuestas institucionales con total transparencia. Cada voto es anónimo, inmutable y auditable en la red de Internet Computer.",
       footerText: "Plataforma de votacion descentralizada sobre Internet Computer"
     },

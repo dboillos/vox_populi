@@ -10,7 +10,8 @@ import { InfoTerm } from "../../components/layout/info-term"
 import { Principal } from "@icp-sdk/core/principal"
 import { canisterService } from "../../lib/canister-service"
 import { canisterId as backendCanisterId } from "../../../../declarations/vox_populi_backend"
-import { canisterId as frontendCanisterId } from "../../../../declarations/vox_populi_frontend"
+
+const frontendCanisterId = (import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND as string || "").trim()
 
 // CORRECCIÓN: Nombre de interfaz coherente
 interface AuditPageProps {
