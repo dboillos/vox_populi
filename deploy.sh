@@ -1,9 +1,9 @@
 #!/bin/bash
-# VERSION: 1.2.49-TFM-FINAL-PRO
-# OBJETIVO: Comparación binaria de Backend y comparativa visual exacta de Frontend.
+# VERSION: v1.2.50-TFM-REAL-AUDIT
+# DESCRIPCIÓN: Verificación cruzada exacta de Backend y Frontend (Red vs Local)
 
 if [ -z "$1" ]; then
-    echo -e "\033[0;31mError: Proporciona un tag (ej: v1.2.49)\033[0m"
+    echo -e "\033[0;31mError: Proporciona un tag (ej: v1.2.50)\033[0m"
     exit 1
 fi
 
@@ -11,14 +11,11 @@ NEW_TAG=$1
 WASM_PATH=".dfx/ic/canisters/vox_populi_backend/vox_populi_backend.wasm"
 
 echo -e "\n\033[0;34m[1/4] Compilando Backend Determinista con Docker...\033[0m"
-rm -rf .dfx/ic/canisters/vox_populi_backend
-docker build -t vox_populi_backend_builder .
-docker run --rm -v "$(pwd)":/project vox_populi_backend_builder || { echo "Docker falló"; exit 1; }
+docker run --rm -v "$(pwd)":/project vox_populi_backend_builder /bin/bash -c "rm -rf .dfx/ic/canisters/vox_populi_backend && dfx build --network ic vox_populi_backend"
 
 echo -e "\n\033[0;34m[2/4] Generando Certificación Local de Frontend...\033[0m"
 if [ -d "src/vox_populi_frontend" ]; then
     cd src/vox_populi_frontend
-    # Forzamos el build ignorando fallos de scripts de dfx generate
     npm install && npm run build --no-scripts || true
     cd ../..
 fi
@@ -27,7 +24,7 @@ FRONTEND_DIST=$(find src/vox_populi_frontend/dist src/vox_populi_frontend/build 
 
 if [ -d "$FRONTEND_DIST" ]; then
     cd "$FRONTEND_DIST"
-    # Generamos manifiesto local limpio
+    # Manifiesto Local: Formato "hash nombre"
     find . -type f ! -name "*.map" -exec sha256sum {} + | sed 's| \./| |' | sort > ../../../assets.manifest
     cd ../../..
     LOCAL_ROOT_HASH=$(sha256sum assets.manifest | awk '{print $1}')
@@ -61,26 +58,21 @@ echo -e "HASH EN RED (IC):    \033[0;36m$HASH_RED_BE\033[0m"
 echo -e "\n\033[1;36m===============================================================\033[0m"
 echo -e "\033[1;36m             AUDITORÍA DETALLADA DEL FRONTEND                \033[0m"
 echo -e "\033[1;36m===============================================================\033[0m"
-echo "Extrayendo hashes de archivos desde la Mainnet..."
+echo "Consultando hashes directamente a la Mainnet..."
 
-# Extracción robusta usando Python con manejo de escapes corregido
-dfx canister --network ic --identity anonymous call vox_populi_frontend list 'record {}' \
-    | grep -E "key =|content_hash = opt blob" \
-    | sed 's/.*"\(.*\)".*/\1/' \
-    | sed -E 's/.*blob "(.*)"/\1/' \
-    | awk 'NR%2{printf "%s|%s\n",$1,$2}' | python3 -c "
-import sys
-import binascii
-for line in sys.stdin:
-    if '|' not in line: continue
-    name, blob = line.strip().split('|')
-    try:
-        # Procesamos el escape de bytes de IC (octal/hex) a hex puro
-        decoded = blob.encode('latin-1').decode('unicode_escape').encode('latin-1')
-        print(f'{binascii.hexlify(decoded).decode()} {name}')
-    except:
-        continue
-" | sort > network_assets.manifest
+# USAMOS UN SCRIPT DE NODE.JS TEMPORAL PARA EXTRAER LOS HASHES DE RED SIN ERRORES DE PARSEO
+node - e "
+const { execSync } = require('child_process');
+const raw = execSync('dfx canister --network ic --identity anonymous call vox_populi_frontend list \"(record {})\"').toString();
+const matches = raw.matchAll(/key = \"(.*?)\";.*?content_hash = opt blob \"(.*?)\"/gs);
+let output = [];
+for (const m of matches) {
+    const name = m[1].startsWith('/') ? m[1].substring(1) : m[1];
+    const hash = m[2].replace(/\\\\/g, '').split('').map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+    output.push(hash.substring(0, 64) + ' ' + name);
+}
+console.log(output.sort().join('\n'));
+" > network_assets.manifest
 
 echo -e "\033[1;33mCOMPARATIVA DE ARCHIVOS (HASH | NOMBRE):\033[0m"
 echo -e "\033[0;34m--- DATOS LOCALES ---\033[0m"
