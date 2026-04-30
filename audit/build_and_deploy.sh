@@ -83,10 +83,47 @@ fi
 echo "Instalando canister usando wasm: $BACKEND_WASM"
 
 echo "Instalando canister 'vox_populi_backend' con el .wasm descargado..."
-set +e; dfx canister --network ic install vox_populi_backend --mode upgrade --wasm "$BACKEND_WASM"; RC=$?; set -e
+set +e
+INSTALL_OUTPUT=$(dfx canister --network ic install vox_populi_backend --mode upgrade --wasm "$BACKEND_WASM" 2>&1)
+RC=$?
+set -e
 if [ $RC -ne 0 ]; then
-  echo "Advertencia: comando de install devolvió código $RC. Intentando deploy alternativo..."
-  dfx deploy --network ic --no-wallet || true
+  echo "Advertencia: comando de install devolvió código $RC."
+  echo "$INSTALL_OUTPUT"
+  # Detectar error de persistencia (IC0504) y preguntar al usuario
+  if echo "$INSTALL_OUTPUT" | grep -q -E "IC0504|Missing upgrade option"; then
+    echo
+    echo "El upgrade falló por una restricción de persistencia (IC0504)."
+    echo "Si eliges 'reinstall' se perderá todo el estado almacenado en el canister (datos persistentes)."
+    echo "Opciones:"
+    echo "  y  -> Proceder con 'reinstall' (perder estado)"
+    echo "  n  -> Abortará el despliegue"
+    while true; do
+      read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
+      case "$yn" in
+        [Yy]* )
+          echo "Ejecutando reinstall (SE PERDERÁ EL ESTADO)..."
+          set +e
+          dfx canister --network ic install vox_populi_backend --mode reinstall --wasm "$BACKEND_WASM"
+          RC2=$?
+          set -e
+          if [ $RC2 -ne 0 ]; then
+            echo "Reinstall falló con código $RC2. Abortando." >&2
+            exit $RC2
+          fi
+          break
+          ;;
+        [Nn]*|"")
+          echo "Abortando despliegue por elección del usuario." >&2
+          exit 1
+          ;;
+        *) echo "Respuesta no válida — responde y (sí) o n (no).";;
+      esac
+    done
+  else
+    echo "Intentando deploy alternativo..."
+    dfx deploy --network ic --no-wallet || true
+  fi
 fi
 
 echo "Fase de auditoría post-despliegue: consultando Mainnet y comparando hashes..."
