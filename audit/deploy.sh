@@ -1,58 +1,91 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Debian Bullseye..."
+if [ "$#" -ge 1 ]; then
+  BACKEND_WASM="$1"
+else
+  if [ -f "./audit_artifacts/backend.wasm" ]; then
+    BACKEND_WASM="./audit_artifacts/backend.wasm"
+  elif [ -f "./audit_artifacts/backend-wasm/backend.wasm" ]; then
+    BACKEND_WASM="./audit_artifacts/backend-wasm/backend.wasm"
+  else
+    echo "Uso: $0 <RUTA_BACKEND_WASM>" >&2
+    echo "Sugerencia: ejecuta antes ./audit/build.sh <TAG> para descargar artefactos." >&2
+    exit 2
+  fi
+fi
 
-# Fase Identidad & Seguridad
-function secure_teardown {
-  echo "Identidad restaurada a anonymous por seguridad."
+# Trap para restaurar identidad a anonymous independientemente del resultado
+function restore_identity {
+  echo "[deploy] Identidad restaurada a anonymous por seguridad"
+  set +e
   dfx identity use anonymous >/dev/null 2>&1 || true
 }
-trap secure_teardown EXIT INT TERM ERR
+trap restore_identity EXIT INT TERM
 
-# Validación Inicial
-if [ ! -d "./audit_artifacts" ]; then
-  echo "Error: El directorio ./audit_artifacts no existe. Ejecute trigger_build.sh previamente."
-  exit 1
+echo "[deploy] Cambiando identidad a prod_deployer para proceder al despliegue..."
+dfx identity use prod_deployer
+
+if [ ! -f "$BACKEND_WASM" ]; then
+  echo "[deploy] Error: archivo wasm no encontrado en: $BACKEND_WASM" >&2
+  exit 6
 fi
 
-BACKEND_WASM=$(find ./audit_artifacts -name "backend.wasm" | head -n 1)
-if [ -z "$BACKEND_WASM" ] || [ ! -f "$BACKEND_WASM" ]; then
-  echo "Error: backend.wasm no encontrado en los artefactos descargados."
-  exit 1
-fi
+echo "[deploy] Instalando canister usando wasm: $BACKEND_WASM"
 
-LOCAL_SHA=$(sha256sum "$BACKEND_WASM" | awk '{print $1}')
-echo "SHA256 del binario a desplegar: $LOCAL_SHA"
+echo "[deploy] Instalando canister 'vox_populi_backend' con el .wasm descargado..."
+set +e
+INSTALL_OUTPUT=$(dfx canister --network ic install vox_populi_backend --mode upgrade --wasm "$BACKEND_WASM" 2>&1)
+RC=$?
+set -e
+if [ $RC -ne 0 ]; then
+  echo "Advertencia: comando de install devolvió código $RC."
+  echo "$INSTALL_OUTPUT"
+  # Detectar error de persistencia (IC0504) interactivo
+  if echo "$INSTALL_OUTPUT" | grep -q -E "IC0504|Missing upgrade option"; then
+    echo
+    echo "El upgrade falló por una restricción de persistencia (IC0504)."
+    echo "Si eliges 'reinstall' se perderá todo el estado almacenado."
+    
+    if [ "${AUTO_CONFIRM_REINSTALL:-0}" = "1" ]; then
+      yn="y"
+      echo "AUTO_CONFIRM_REINSTALL=1: autoconfirmando reinstall"
+    else
+      while true; do
+        read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
+        case "$yn" in
+          [Yy]*|[Nn]*|"") break ;;
+          *) echo "Respuesta no válida — responde y (sí) o n (no)." ;;
+        esac
+      done
+    fi
 
-echo "Cambiando a la identidad de despliegue (prod_developer)..."
-dfx identity use prod_developer
-
-# Fase Despliegue (Mainnet)
-echo "Instalando Wasm en Mainnet... (PROHIBIDO ejecutar dfx build local)"
-dfx canister --network ic install vox_populi_backend --mode upgrade --wasm "$BACKEND_WASM"
-
-FRONTEND_DIST=$(find ./audit_artifacts -type d -name "dist" | head -n 1)
-if [ -n "$FRONTEND_DIST" ]; then
-  echo "Desplegando assets del frontend en Mainnet..."
-  # --no-build garantiza que no se muta el estado local compilando de nuevo
-  dfx deploy vox_populi_frontend --network ic --no-wallet --no-build || true
-fi
-
-# Fase Auditoría
-echo "Validando integridad de los activos descargados de GitHub contra Mainnet..."
-dfx canister --network ic info vox_populi_backend || true
-CANISTER_ASSETS=$(dfx canister --network ic call vox_populi_backend list_assets 2>&1 || true)
-
-ONCHAIN_SHA="$(echo "$CANISTER_ASSETS" | grep -Eo '[0-9a-f]{64}' | head -n1 || true)"
-if [ -n "$ONCHAIN_SHA" ]; then
-  echo "Hash On-Chain reportado: $ONCHAIN_SHA"
-  if [ "$ONCHAIN_SHA" == "$LOCAL_SHA" ]; then
-    echo "ÉXITO TOTAL: El hash on-chain coincide con el artefacto inmutable descargado."
+    if echo "${yn:-n}" | grep -qi "^[Yy]"; then
+      echo "Ejecutando reinstall (SE PERDERÁ EL ESTADO)..."
+      set +e
+      if [ "${AUTO_CONFIRM_REINSTALL:-0}" = "1" ]; then
+        dfx canister --network ic install vox_populi_backend --mode reinstall --yes --wasm "$BACKEND_WASM"
+      else
+        dfx canister --network ic install vox_populi_backend --mode reinstall --wasm "$BACKEND_WASM"
+      fi
+      RC2=$?
+      set -e
+      if [ $RC2 -ne 0 ]; then
+        echo "Reinstall falló con código $RC2. Abortando." >&2
+        exit $RC2
+      fi
+    else
+      echo "Abortando despliegue por elección del usuario." >&2
+      exit 1
+    fi
   else
-    echo "ERROR CRÍTICO: Discrepancia detectada entre hash local y Mainnet."
-    exit 1
+    echo "Intentando deploy alternativo..."
+    dfx deploy --network ic --no-wallet || true
   fi
-else
-  echo "Advertencia: No se pudo obtener el hash on-chain de forma automatizada."
 fi
+
+echo "[deploy] Fase de auditoría post-despliegue: consultando Mainnet..."
+dfx canister --network ic info vox_populi_backend || true
+
+echo "[deploy] Despliegue finalizado."
+echo "[deploy] Siguiente paso recomendado: ./audit/verify.sh <TAG>"

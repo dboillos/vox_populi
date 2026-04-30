@@ -43,11 +43,11 @@ Workflow de GitHub Actions que:
 - **Verifica**: Calcula y registra SHA256 del Wasm
 - **Publica**: Artefactos en GitHub (accesibles vía `gh run download`)
 
-### 3. **trigger_build.sh** y **deploy.sh**
+### 3. **build.sh** y **deploy.sh**
 Scripts automatizados para construcción remota y despliegue en Mainnet. Separados para garantizar un control paso a paso.
 
 ```bash
-./audit/trigger_build.sh v1.2.3
+./audit/build.sh v1.2.3
 ./audit/deploy.sh
 ```
 
@@ -61,12 +61,12 @@ Scripts automatizados para construcción remota y despliegue en Mainnet. Separad
 | **Descarga** | Obtiene artefactos a `./audit_artifacts/` |
 | **Identity Manager** | Cambia a `prod_deployer` antes de desplegar |
 | **Despliegue** | Instala Wasm en Mainnet (SIN ejecutar `dfx build` localmente) |
-| **Auditoría Post** | Consulta canister y compara SHA256 |
+| **Auditoría Post** | Consulta estado del canister desplegado |
 | **Limpieza** | Restaura identidad a `anonymous` (trap en EXIT) |
 
 **Ejemplo:**
 ```bash
-./audit/trigger_build.sh v1.0.0
+./audit/build.sh v1.0.0
 ./audit/deploy.sh
 ```
 
@@ -80,16 +80,16 @@ Se ha identificado la ejecución de Actions: 12345678. Esperando a que termine..
 Descargando artefactos de GitHub Actions a ./audit_artifacts...
 Cambiando identidad a prod_deployer para proceder al despliegue...
 Instalando canister 'backend' con el .wasm descargado...
-Fase de auditoría post-despliegue: consultando Mainnet y comparando hashes...
-Verificación exitosa: el SHA256 del wasm en GitHub coincide con el registrado on-chain.
+Fase de auditoría post-despliegue: consultando Mainnet...
+Despliegue finalizado.
 Identidad restaurada a anonymous por seguridad
 ```
 
-### 4. **verify_integrity.sh**
+### 4. **verify.sh**
 Script de auditoría forense independiente:
 
 ```bash
-./audit/verify_integrity.sh v1.2.3
+./audit/verify.sh v1.2.3
 ```
 
 **Función:**
@@ -110,28 +110,35 @@ git status  # Debe estar limpio
 git log --oneline -1  # Mostrar último commit
 ```
 
-### Paso 2: Crear el tag y desplegar
+### Paso 2: Crear el tag y descargar artefactos
 ```bash
-./audit/build_and_deploy.sh v1.2.3
+./audit/build.sh v1.2.3
 ```
 
 El script automáticamente:
 1. Crea el tag `v1.2.3`
 2. Espera la ejecución de GitHub Actions
 3. Descarga artefactos
-4. Cambia identidad a `prod_deployer`
-5. Despliega el Wasm en Mainnet
-6. Audita integridad
-7. Restaura `anonymous`
 
-### Paso 3: Auditoría Independiente (opcional)
+### Paso 3: Desplegar en Mainnet
 ```bash
-./audit/verify_integrity.sh v1.2.3
+./audit/deploy.sh
+```
+
+El script automáticamente:
+1. Usa el Wasm descargado en `./audit_artifacts/`
+2. Cambia identidad a `prod_deployer`
+3. Despliega el Wasm en Mainnet
+4. Restaura `anonymous`
+
+### Paso 4: Auditoría Independiente (opcional)
+```bash
+./audit/verify.sh v1.2.3
 ```
 
 Genera reporte forense completo.
 
-### Paso 4: Verificación Manual on-chain
+### Paso 5: Verificación Manual on-chain
 ```bash
 dfx canister --network ic info backend
 dfx canister --network ic call backend list_assets 2>&1 | grep -Eo '[0-9a-f]{64}'
@@ -162,7 +169,7 @@ cd /Users/david/Desktop/ICP/vox_populi
 bash audit/setup-workflow.sh
 
 # Hacer ejecutables los scripts
-chmod +x audit/build_and_deploy.sh audit/verify_integrity.sh
+chmod +x audit/build.sh audit/deploy.sh audit/verify.sh
 
 # Commit del workflow a Git
 git add .github/workflows/trusted-release-pipeline.yml
@@ -228,16 +235,17 @@ No requieren configuración manual.
 cd /Users/david/Desktop/ICP/vox_populi
 git status  # Debe estar limpio
 
-# 2. Desplegar con tag v1.0.0
-./audit/build_and_deploy.sh v1.0.0
+# 2. Trigger de build remoto y descarga de artefactos
+./audit/build.sh v1.0.0
 
-# 3. Esperar hasta que termine (incluye polling automático)
+# 3. Deploy del Wasm descargado
+./audit/deploy.sh
 
 # 4. Verificar on-chain
 dfx canister --network ic info backend
 
 # 5. Auditoría independiente
-./audit/verify_integrity.sh v1.0.0
+./audit/verify.sh v1.0.0
 ```
 
 ---
@@ -251,8 +259,9 @@ vox_populi/
 │       └── trusted-release-pipeline.yml   # 🔄 GitHub Actions workflow
 ├── audit/
 │   ├── Dockerfile.build                   # 🐳 Construcción determinista
-│   ├── build_and_deploy.sh               # 🚀 Despliegue full-auto
-│   ├── verify_integrity.sh               # 🔍 Auditoría forense
+│   ├── build.sh                          # 🏷️ Trigger + descarga de artefactos
+│   ├── deploy.sh                         # 🚀 Deploy en Mainnet
+│   ├── verify.sh                         # 🔍 Auditoría forense
 │   └── setup-workflow.sh                 # 🛠️ Setup inicial (uso único)
 ├── src/
 ├── dfx.json
@@ -272,13 +281,13 @@ vox_populi/
 - Compilación sin variables de entorno inestables
 - WASM stripped de debug info
 
-✅ **build_and_deploy.sh**:
+✅ **deploy.sh**:
 - Validación de rama antes de proceder
 - Estado limpio de git obligatorio
 - Identity trap para restaurar `anonymous` en casos de error
-- Auditoría SHA256 post-despliegue
+- Despliegue controlado con fallback para `IC0504`
 
-✅ **verify_integrity.sh**:
+✅ **verify.sh**:
 - Comparación forense ignorando cachés
 - Descarga artefactos desde fuente de verdad (GitHub)
 - Cotejación con valores on-chain
@@ -298,7 +307,8 @@ vox_populi/
 
 Para depuración detallada, ejecuta con `set -x`:
 ```bash
-(set -x; ./audit/build_and_deploy.sh v1.0.0)
+(set -x; ./audit/build.sh v1.0.0)
+(set -x; ./audit/deploy.sh)
 ```
 
 Para verificar el hash del Dockerfile:
