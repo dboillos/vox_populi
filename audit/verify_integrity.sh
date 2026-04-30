@@ -11,10 +11,13 @@ TAG="$1"
 echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Imagen base: Debian Bullseye (dfinity/sdk:0.32.0)"
 echo "Validando integridad de los activos descargados de GitHub para el tag: ${TAG}"
 
-# Buscar commit asociado al tag
-COMMIT="$(git rev-parse "refs/tags/${TAG}")"
+# Buscar commit asociado al tag en el remoto para no depender de refs locales.
+COMMIT="$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk '{print $1}' | head -n1)"
 if [ -z "$COMMIT" ]; then
-  echo "Error: no se pudo resolver el commit para el tag ${TAG}" >&2
+  COMMIT="$(git ls-remote --tags origin "refs/tags/${TAG}" | awk '{print $1}' | head -n1)"
+fi
+if [ -z "$COMMIT" ]; then
+  echo "Error: no se pudo resolver el commit para el tag ${TAG} en el remoto origin." >&2
   exit 3
 fi
 
