@@ -129,9 +129,9 @@ if [ $RC -ne 0 ]; then
       exit 1
     fi
     done
-  else
-    echo "Intentando deploy alternativo..."
-    dfx deploy --network ic --no-wallet || true
+    else
+      echo "Intentando deploy alternativo..."
+      dfx deploy --network ic --no-wallet || true
   fi
 fi
 
