@@ -79,7 +79,7 @@ grep -q "git rev-parse --abbrev-ref HEAD" audit/build_and_deploy.sh && pass "bui
 grep -q "git status --porcelain" audit/build_and_deploy.sh && pass "build_and_deploy.sh valida estado limpio" || fail "build_and_deploy.sh no valida estado limpio"
 
 # Verificar identity manager
-grep -q "dfx identity use prod_developer" audit/build_and_deploy.sh && pass "build_and_deploy.sh cambia a prod_developer" || fail "build_and_deploy.sh no usa prod_developer"
+grep -q "dfx identity use prod_deployer" audit/build_and_deploy.sh && pass "build_and_deploy.sh cambia a prod_deployer" || fail "build_and_deploy.sh no usa prod_deployer"
 grep -q "dfx identity use anonymous" audit/build_and_deploy.sh && pass "build_and_deploy.sh restaura anonymous" || fail "build_and_deploy.sh no restaura anonymous"
 
 echo ""

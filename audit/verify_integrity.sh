@@ -43,13 +43,21 @@ echo "Se identificó la ejecución de Actions: $RUN_ID. Descargando artefactos a
 mkdir -p ./audit_artifacts
 gh run download "$RUN_ID" --dir ./audit_artifacts
 
-if [ ! -f ./audit_artifacts/backend.wasm ]; then
+# Buscar backend.wasm en los dos posibles lugares
+BACKEND_WASM=""
+if [ -f ./audit_artifacts/backend.wasm ]; then
+  BACKEND_WASM="./audit_artifacts/backend.wasm"
+elif [ -f ./audit_artifacts/backend-wasm/backend.wasm ]; then
+  BACKEND_WASM="./audit_artifacts/backend-wasm/backend.wasm"
+fi
+
+if [ -z "$BACKEND_WASM" ]; then
   echo "Error: backend.wasm no encontrado entre los artefactos descargados." >&2
   exit 5
 fi
 
 echo "Calculando SHA256 del wasm descargado (GitHub)..."
-LOCAL_SHA=$(sha256sum ./audit_artifacts/backend.wasm | awk '{print $1}')
+LOCAL_SHA=$(sha256sum "$BACKEND_WASM" | awk '{print $1}')
 echo "SHA256 local (GitHub artifact): $LOCAL_SHA"
 
 echo "Consultando la Mainnet para obtener hashes on-chain (se intentará método list_assets)..."

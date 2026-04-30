@@ -61,8 +61,8 @@ echo "Descargando artefactos de GitHub Actions a ./audit_artifacts..."
 mkdir -p ./audit_artifacts
 gh run download "$RUN_ID" --dir ./audit_artifacts
 
-echo "Cambiando identidad a prod_developer para proceder al despliegue..."
-dfx identity use prod_developer
+echo "Cambiando identidad a prod_deployer para proceder al despliegue..."
+dfx identity use prod_deployer
 
 echo "Instalando Wasm y activos en la Mainnet (NO se ejecuta dfx build localmente)."
 if [ ! -f ./audit_artifacts/backend.wasm ]; then

@@ -58,7 +58,7 @@ Script full-auto de despliegue en Mainnet:
 | **Tagging** | Crea tag y hace push a GitHub |
 | **Polling Actions** | Espera ejecución de workflow con `gh run watch` |
 | **Descarga** | Obtiene artefactos a `./audit_artifacts/` |
-| **Identity Manager** | Cambia a `prod_developer` antes de desplegar |
+| **Identity Manager** | Cambia a `prod_deployer` antes de desplegar |
 | **Despliegue** | Instala Wasm en Mainnet (SIN ejecutar `dfx build` localmente) |
 | **Auditoría Post** | Consulta canister y compara SHA256 |
 | **Limpieza** | Restaura identidad a `anonymous` (trap en EXIT) |
@@ -76,7 +76,7 @@ Creando tag v1.0.0 y empujando a GitHub...
 Buscando ejecución de GitHub Actions...
 Se ha identificado la ejecución de Actions: 12345678. Esperando a que termine...
 Descargando artefactos de GitHub Actions a ./audit_artifacts...
-Cambiando identidad a prod_developer para proceder al despliegue...
+Cambiando identidad a prod_deployer para proceder al despliegue...
 Instalando canister 'backend' con el .wasm descargado...
 Fase de auditoría post-despliegue: consultando Mainnet y comparando hashes...
 Verificación exitosa: el SHA256 del wasm en GitHub coincide con el registrado on-chain.
@@ -117,7 +117,7 @@ El script automáticamente:
 1. Crea el tag `v1.2.3`
 2. Espera la ejecución de GitHub Actions
 3. Descarga artefactos
-4. Cambia identidad a `prod_developer`
+4. Cambia identidad a `prod_deployer`
 5. Despliega el Wasm en Mainnet
 6. Audita integridad
 7. Restaura `anonymous`
@@ -146,9 +146,9 @@ dfx canister --network ic call backend list_assets 2>&1 | grep -Eo '[0-9a-f]{64}
   gh auth login
   ```
 - DFX instalado y canister `backend` creado (`dfx.json`)
-- Identidad `prod_developer` configurada:
+- Identidad `prod_deployer` configurada:
   ```bash
-  dfx identity new prod_developer  # Si no existe
+  dfx identity new prod_deployer  # Si no existe
   dfx identity list  # Verificar que está presente
   ```
 
@@ -209,11 +209,11 @@ No requieren configuración manual.
   git pull origin main
   ```
 
-### Error: "identity prod_developer no existe"
+### Error: "identity prod_deployer no existe"
 - **Solución**: Crear la identidad:
   ```bash
-  dfx identity new prod_developer
-  dfx identity use prod_developer  # Verificar que funciona
+  dfx identity new prod_deployer
+  dfx identity use prod_deployer  # Verificar que funciona
   dfx identity use anonymous       # Volver a anonymous
   ```
 
@@ -286,7 +286,7 @@ vox_populi/
 ## Notas Finales
 
 - **NO** se ejecuta `dfx build` localmente durante el despliegue; se usa el Wasm de GitHub Actions.
-- **Identity management**: El script automáticamente gestiona `prod_developer` y restaura `anonymous`.
+- **Identity management**: El script automáticamente gestiona `prod_deployer` y restaura `anonymous`.
 - **Logs**: Todos los scripts producen salida extremadamente verbosa en español.
 - **Reproducibilidad**: Cada build produce bytes idénticos gracias a `SOURCE_DATE_EPOCH` y wasm-opt.
 
