@@ -8,7 +8,7 @@ fi
 
 TAG="$1"
 
-echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Imagen base: Debian Bullseye (dfinity/sdk:0.32.0)"
+echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Imagen base: Ubuntu 24.04 con DFX oficial descargado desde GitHub Releases"
 echo "Validando integridad de los activos descargados de GitHub para el tag: ${TAG}"
 
 # Buscar commit asociado al tag en el remoto para no depender de refs locales.
@@ -54,7 +54,7 @@ echo "SHA256 local (GitHub artifact): $LOCAL_SHA"
 
 echo "Consultando la Mainnet para obtener hashes on-chain (se intentará método list_assets)..."
 set +e
-CANISTER_OUTPUT=$(dfx canister --network ic call backend list_assets 2>&1 || true)
+CANISTER_OUTPUT=$(dfx canister --network ic call vox_populi_backend list_assets 2>&1 || true)
 set -e
 
 echo "Salida on-chain (raw):"

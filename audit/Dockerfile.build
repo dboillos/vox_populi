@@ -1,4 +1,4 @@
-FROM debian:bullseye
+FROM --platform=linux/amd64 ubuntu:24.04
 
 # Entorno determinista base
 ARG BUILD_EPOCH=1630454400
@@ -65,16 +65,16 @@ COPY . /canister
 # Fijar timestamps de archivos fuente para reproducibilidad
 RUN find /canister -exec touch -h -d @${SOURCE_DATE_EPOCH} {} + || true
 
-# Ejecutar compilación: dfx build para backend + npm run build para frontend
+# Ejecutar compilación: dfx build para vox_populi_backend + npm run build para frontend
 RUN set -eux; \
   export TZ=UTC; export LANG=C.UTF-8; export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}; \
   export DFX_HOME=/tmp/dfx_home; mkdir -p /tmp/dfx_home; \
   export PATH="/usr/local/bin:$PATH"; \
     # Validar instalación
     dfx --version; \
-    echo "Iniciando dfx build para 'backend' (red: ic) con entorno estable..."; \
+    echo "Iniciando dfx build para 'vox_populi_backend' (red: ic) con entorno estable..."; \
     # Ejecutar build
-    dfx build --network ic backend || (echo 'dfx build falló'; exit 1); \
+    dfx build --network ic vox_populi_backend || (echo 'dfx build falló'; exit 1); \
     # Encontrar y procesar WASM
     WASM_PATH=$(find . -type f -name "*.wasm" -print | grep -v node_modules | head -n1 || true); \
     if [ -z "$WASM_PATH" ]; then echo "Error: no se generó archivo .wasm"; exit 2; fi; \

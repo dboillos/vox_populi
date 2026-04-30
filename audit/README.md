@@ -8,7 +8,7 @@ Sistema 100% automatizado y determinista para desplegar canisters en Internet Co
 
 - **DFX**: 0.32.0
 - **Node.js**: 20.11.1 LTS
-- **Sistema Base**: Debian Bullseye (imagen `dfinity/sdk:0.32.0`)
+- **Sistema Base**: Ubuntu 24.04 (imagen compatible con el binario oficial de DFX 0.32.0)
 - **Backend**: Motoko
 - **Frontend**: React + Vite
 - **Herramientas**: DFX, Docker, GitHub CLI (`gh`)
@@ -70,7 +70,7 @@ Script full-auto de despliegue en Mainnet:
 
 Output:
 ```
-Entorno fijado: DFX 0.32.0, Node 20.11.1, Imagen base: Debian Bullseye...
+Entorno fijado: DFX 0.32.0, Node 20.11.1, Imagen base: Ubuntu 24.04...
 Comprobando branch actual y estado del repositorio...
 Creando tag v1.0.0 y empujando a GitHub...
 Buscando ejecución de GitHub Actions...

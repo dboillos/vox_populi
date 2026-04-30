@@ -8,7 +8,7 @@ fi
 
 TAG="$1"
 
-echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Base: Debian Bullseye con DFX oficial descargado desde GitHub Releases"
+echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Base: Ubuntu 24.04 con DFX oficial descargado desde GitHub Releases"
 echo "Iniciando proceso automático y determinista de construcción y despliegue para el tag: ${TAG}"
 
 # Trap para restaurar identidad a anonymous independientemente del resultado
@@ -69,8 +69,8 @@ if [ ! -f ./audit_artifacts/backend.wasm ]; then
   echo "Error: backend.wasm no encontrado en ./audit_artifacts" >&2; exit 6
 fi
 
-echo "Instalando canister 'backend' con el .wasm descargado..."
-set +e; dfx canister --network ic install backend --mode upgrade --wasm ./audit_artifacts/backend.wasm; RC=$?; set -e
+echo "Instalando canister 'vox_populi_backend' con el .wasm descargado..."
+set +e; dfx canister --network ic install vox_populi_backend --mode upgrade --wasm ./audit_artifacts/backend.wasm; RC=$?; set -e
 if [ $RC -ne 0 ]; then
   echo "Advertencia: comando de install devolvió código $RC. Intentando deploy alternativo..."
   dfx deploy --network ic --no-wallet || true
@@ -78,11 +78,11 @@ fi
 
 echo "Fase de auditoría post-despliegue: consultando Mainnet y comparando hashes..."
 echo "Obteniendo información canister (dfx canister info)..."
-dfx canister --network ic info backend || true
+dfx canister --network ic info vox_populi_backend || true
 
 echo "Solicitando listado de activos al canister (si el método existe 'list_assets')..."
 set +e
-CANISTER_ASSETS_RAW=$(dfx canister --network ic call backend list_assets 2>&1 || true)
+CANISTER_ASSETS_RAW=$(dfx canister --network ic call vox_populi_backend list_assets 2>&1 || true)
 set -e
 
 echo "Integridad: calculando SHA256 locales y comparando con datos on-chain..."
