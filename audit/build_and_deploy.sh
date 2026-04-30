@@ -98,27 +98,36 @@ if [ $RC -ne 0 ]; then
     echo "Opciones:"
     echo "  y  -> Proceder con 'reinstall' (perder estado)"
     echo "  n  -> Abortará el despliegue"
-    while true; do
-      read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
-      case "$yn" in
-        [Yy]* )
-          echo "Ejecutando reinstall (SE PERDERÁ EL ESTADO)..."
-          set +e
-          dfx canister --network ic install vox_populi_backend --mode reinstall --wasm "$BACKEND_WASM"
-          RC2=$?
-          set -e
-          if [ $RC2 -ne 0 ]; then
-            echo "Reinstall falló con código $RC2. Abortando." >&2
-            exit $RC2
-          fi
-          break
-          ;;
-        [Nn]*|"")
-          echo "Abortando despliegue por elección del usuario." >&2
-          exit 1
-          ;;
-        *) echo "Respuesta no válida — responde y (sí) o n (no).";;
-      esac
+    # Soporte para ejecución no interactiva durante pruebas: si AUTO_CONFIRM_REINSTALL=1
+    if [ "${AUTO_CONFIRM_REINSTALL:-0}" = "1" ]; then
+      yn="y"
+      echo "AUTO_CONFIRM_REINSTALL=1: autoconfirmando reinstall"
+    else
+      while true; do
+        read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
+        break_flag=0
+        case "$yn" in
+          [Yy]* ) break_flag=1; break;;
+          [Nn]*|"" ) break;;
+          * ) echo "Respuesta no válida — responde y (sí) o n (no).";;
+        esac
+        if [ $break_flag -eq 1 ]; then break; fi
+      done
+    fi
+    if [ "${yn:-n}" != "" ] && (echo "$yn" | grep -qi "^[Yy]"); then
+      echo "Ejecutando reinstall (SE PERDERÁ EL ESTADO)..."
+      set +e
+      dfx canister --network ic install vox_populi_backend --mode reinstall --wasm "$BACKEND_WASM"
+      RC2=$?
+      set -e
+      if [ $RC2 -ne 0 ]; then
+        echo "Reinstall falló con código $RC2. Abortando." >&2
+        exit $RC2
+      fi
+    else
+      echo "Abortando despliegue por elección del usuario." >&2
+      exit 1
+    fi
     done
   else
     echo "Intentando deploy alternativo..."
