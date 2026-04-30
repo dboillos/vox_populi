@@ -37,6 +37,7 @@ RUN echo "Entorno fijado: DFX ${DFX_VERSION}, Node ${NODE_VERSION}, Ubuntu 24.04
 
 RUN npm ci
 RUN dfx build --network ic vox_populi_backend
+RUN dfx generate vox_populi_backend
 RUN npm run build --workspace src/vox_populi_frontend --ignore-scripts
 
 # Exportar artefactos a /out para el workflow
