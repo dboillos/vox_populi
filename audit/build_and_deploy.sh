@@ -57,6 +57,9 @@ fi
 echo "Se ha identificado la ejecución de Actions: $RUN_ID. Esperando a que termine (visualización en vivo)..."
 gh run watch "$RUN_ID"
 
+echo "Limpiando artefactos antiguos..."
+rm -rf ./audit_artifacts
+
 echo "Descargando artefactos de GitHub Actions a ./audit_artifacts..."
 mkdir -p ./audit_artifacts
 gh run download "$RUN_ID" --dir ./audit_artifacts
