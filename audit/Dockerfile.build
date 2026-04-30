@@ -48,8 +48,9 @@ RUN set -eux; \
   curl -fSL "${DFX_RELEASE_ROOT}/${DFX_TARBALL}" -o /tmp/${DFX_TARBALL}; \
   curl -fSL "${DFX_RELEASE_ROOT}/${DFX_SHA256}" -o /tmp/${DFX_SHA256}; \
   (cd /tmp && sha256sum -c ${DFX_SHA256}); \
-  mkdir -p /usr/local/bin; \
-  tar -xzf /tmp/${DFX_TARBALL} -C /usr/local/bin; \
+  mkdir -p /tmp/dfx-extract /usr/local/bin; \
+  tar -xzf /tmp/${DFX_TARBALL} -C /tmp/dfx-extract; \
+  cp /tmp/dfx-extract/${DFX_BASENAME}/dfx /usr/local/bin/dfx; \
   rm -f /tmp/${DFX_TARBALL} /tmp/${DFX_SHA256}; \
   chmod +x /usr/local/bin/dfx; \
   dfx --version
