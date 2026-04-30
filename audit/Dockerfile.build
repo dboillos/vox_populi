@@ -1,4 +1,4 @@
-FROM dfinity/sdk:0.32.0
+FROM debian:bullseye
 
 # Entorno determinista base
 ARG BUILD_EPOCH=1630454400
@@ -7,20 +7,22 @@ ENV TZ=UTC
 ENV LANG=C.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Variables para Node.js versión fija
+# Variables para versiones fijas
 ARG NODE_VERSION=20.11.1
+ARG DFX_VERSION=0.32.0
 ENV NODE_VERSION=${NODE_VERSION}
+ENV DFX_VERSION=${DFX_VERSION}
 
 WORKDIR /canister
 
-# Instalaciones necesarias para compilación y para garantizar que el wasm sea "strippeado"
+# Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates curl xz-utils gnupg git build-essential python3 procps wget unzip \
     patchelf file gzip bzip2 tar coreutils \
-    binaryen \
+    libssl-dev pkg-config \
   && rm -rf /var/lib/apt/lists/*
 
-# Instalar Node.js binario exacto (20.11.1) de manera explícita
+# Instalar Node.js 20.11.1 desde binario oficial
 RUN set -eux; \
     ARCH=$(dpkg --print-architecture); \
     case "$ARCH" in \
@@ -30,60 +32,72 @@ RUN set -eux; \
     esac; \
     NODE_TARBALL=node-v${NODE_VERSION}-${NODE_DIST}.tar.xz; \
     NODE_URL=https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}; \
+    echo "Descargando Node.js ${NODE_VERSION} desde ${NODE_URL}..."; \
     curl -fSL "$NODE_URL" -o /tmp/${NODE_TARBALL}; \
     tar -xJf /tmp/${NODE_TARBALL} -C /usr/local --strip-components=1; \
     rm -f /tmp/${NODE_TARBALL}; \
     node --version; npm --version
 
-# Configurar npm para reproducibilidad: usar npm ci y conservar package-lock.json
-ENV NPM_CONFIG_LOGLEVEL=warn
+# Instalar DFX 0.32.0 desde script oficial
+RUN set -eux; \
+    echo "Instalando DFX ${DFX_VERSION}..."; \
+    curl -fsSL https://sdk.dfinity.org/install.sh | bash; \
+    echo "Agregando DFX al PATH..."; \
+    echo 'export PATH="$HOME/.local/share/dfx/bin:$PATH"' >> /root/.bashrc; \
+    export PATH="/root/.local/share/dfx/bin:$PATH"; \
+    which dfx; \
+    dfx --version
 
-# Copiar el código fuente al contenedor
+# Configurar npm para reproducibilidad
+ENV NPM_CONFIG_LOGLEVEL=warn
+ENV PATH="/root/.local/share/dfx/bin:$PATH"
+
+# Copiar código fuente
 COPY . /canister
 
 # Fijar timestamps de archivos fuente para reproducibilidad
 RUN find /canister -exec touch -h -d @${SOURCE_DATE_EPOCH} {} + || true
 
-# Ejecutar compilación: dfx build para backend (Motoko) y npm run build para frontend.
-# Forzamos variables de entorno estables y usamos herramientas para reducir metadatos.
+# Ejecutar compilación: dfx build para backend + npm run build para frontend
 RUN set -eux; \
-    export DFX_VERSION=0.32.0; \
     export TZ=UTC; export LANG=C.UTF-8; export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}; \
-    # Limpiar variables de entorno que puedan introducir inestabilidad
-    unset HOME; export DFX_HOME=/tmp/dfx_home; mkdir -p /tmp/dfx_home; \
-    # Ejecutar build de Motoko (backend)
+    export DFX_HOME=/tmp/dfx_home; mkdir -p /tmp/dfx_home; \
+    export PATH="/root/.local/share/dfx/bin:$PATH"; \
+    # Validar instalación
     dfx --version; \
     echo "Iniciando dfx build para 'backend' (red: ic) con entorno estable..."; \
+    # Ejecutar build
     dfx build --network ic backend || (echo 'dfx build falló'; exit 1); \
-    # Buscar wasm generado
-    WASM_PATH=$(find . -type f -name "*.wasm" -print | head -n1 || true); \
+    # Encontrar y procesar WASM
+    WASM_PATH=$(find . -type f -name "*.wasm" -print | grep -v node_modules | head -n1 || true); \
     if [ -z "$WASM_PATH" ]; then echo "Error: no se generó archivo .wasm"; exit 2; fi; \
     echo "WASM generado en: $WASM_PATH"; \
-    # Strip y optimización para eliminar metadata variable y reducir ruido
-    if command -v wasm-strip >/dev/null 2>&1; then wasm-strip "$WASM_PATH" || true; fi; \
-    if command -v wasm-opt >/dev/null 2>&1; then wasm-opt -Oz --strip-debug -o "$WASM_PATH" "$WASM_PATH" || true; fi; \
-    # Asegurar timestamps reproducibles y ubicación de salida
-    mkdir -p /out/dist; mkdir -p /out/artifacts; \
-    echo "Fijando timestamps a SOURCE_DATE_EPOCH..."; \
-    find . -type f -print0 | xargs -0 touch -d @${SOURCE_DATE_EPOCH} || true; \
-    # Copiar el wasm final a /out con nombre determinista
+    # Crear directorio de salida
+    mkdir -p /out/dist /out/artifacts; \
+    # Copiar WASM a salida
     cp "$WASM_PATH" /out/backend.wasm; \
-    # Construir frontend con npm ci y npm run build
-    if [ -f vox_populi_frontend/package-lock.json ] || [ -f frontend/package-lock.json ]; then \
-      # Intentamos detectar la carpeta frontend
-      if [ -d vox_populi_frontend ]; then \
-        cd vox_populi_frontend; npm ci --no-audit --prefer-offline; npm run build --if-present; \
-        cp -a dist /out/dist || true; cd /canister; \
-      elif [ -d frontend ]; then \
-        cd frontend; npm ci --no-audit --prefer-offline; npm run build --if-present; cp -a dist /out/dist || true; cd /canister; \
-      else \
-        echo "No se encontró carpeta de frontend conocida; se omitirá la compilación frontend."; \
-      fi; \
+    echo "SHA256 del wasm: $(sha256sum /out/backend.wasm)"; \
+    # Construir frontend si existe
+    if [ -f vox_populi_frontend/package-lock.json ]; then \
+      echo "Compilando frontend desde vox_populi_frontend..."; \
+      cd vox_populi_frontend; \
+      npm ci --no-audit --prefer-offline; \
+      npm run build --if-present; \
+      cp -a dist /out/dist || true; \
+      cd /canister; \
+    elif [ -f frontend/package-lock.json ]; then \
+      echo "Compilando frontend desde frontend..."; \
+      cd frontend; \
+      npm ci --no-audit --prefer-offline; \
+      npm run build --if-present; \
+      cp -a dist /out/dist || true; \
+      cd /canister; \
     else \
-      echo "Advertencia: package-lock.json no encontrado en ruta esperada; se omite npm ci."; \
+      echo "Advertencia: no se encontró package-lock.json para frontend"; \
     fi; \
-    # Normalizar permisos y timestamps en /out
-    find /out -exec touch -d @${SOURCE_DATE_EPOCH} {} + || true; \
-    echo "Checksum SHA256 del wasm generado:"; sha256sum /out/backend.wasm || true
+    # Normalizar timestamps finales
+    find /out -type f -exec touch -d @${SOURCE_DATE_EPOCH} {} + || true; \
+    echo "Build completado exitosamente"; \
+    ls -lah /out/
 
-CMD ["/bin/sh", "-c", "echo 'Contenedor de build finalizado; busque /out/backend.wasm y /out/dist' && ls -la /out || true"]
+CMD ["/bin/sh", "-c", "echo 'Contenedor de build finalizado' && ls -la /out || true"]
