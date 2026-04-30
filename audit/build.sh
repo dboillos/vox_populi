@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+
+export GH_PAGER=cat
 
 if [ -z "${1:-}" ]; then
   echo "Error: Debe proporcionar un Tag como argumento."
@@ -51,6 +53,26 @@ echo "Descargando artefactos de forma 100% automatizada..."
 rm -rf ./audit_artifacts
 mkdir -p ./audit_artifacts
 gh run download "$RUN_ID" --dir ./audit_artifacts
+
+BACKEND_WASM=$(find ./audit_artifacts -type f -name "backend.wasm" | head -n 1 || true)
+FRONTEND_INDEX=$(find ./audit_artifacts -type f -path "*/frontend-dist/index.html" | head -n 1 || true)
+
+if [ -z "$BACKEND_WASM" ]; then
+  echo "Error: no se encontró backend.wasm en los artefactos descargados." >&2
+  echo "Contenido descargado:" >&2
+  find ./audit_artifacts -maxdepth 3 -type f >&2 || true
+  exit 6
+fi
+
+if [ -z "$FRONTEND_INDEX" ]; then
+  echo "Error: no se encontró frontend-dist/index.html en los artefactos descargados." >&2
+  echo "Contenido descargado:" >&2
+  find ./audit_artifacts -maxdepth 3 -type f >&2 || true
+  exit 7
+fi
+
+echo "Artefacto backend encontrado: $BACKEND_WASM"
+echo "Artefacto frontend encontrado: $FRONTEND_INDEX"
 
 echo "Validando integridad de los activos descargados de GitHub..."
 find ./audit_artifacts -type f -exec sha256sum {} +
