@@ -9,7 +9,7 @@ import { useLocale } from "../../lib/locale-context"
 import { InfoTerm } from "../../components/layout/info-term"
 import { Principal } from "@icp-sdk/core/principal"
 import { canisterService } from "../../lib/canister-service"
-import { canisterId as backendCanisterId } from "../../../../declarations/vox_populi_backend"
+import { canisterId as backendCanisterId } from "declarations/vox_populi_backend"
 
 const frontendCanisterId = (import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND as string || "").trim()
 

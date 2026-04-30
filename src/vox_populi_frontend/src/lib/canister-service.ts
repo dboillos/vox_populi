@@ -1,5 +1,5 @@
 import { Principal } from "@icp-sdk/core/principal"
-import { createActor, canisterId as generatedCanisterId } from "../../../declarations/vox_populi_backend"
+import { createActor, canisterId as generatedCanisterId } from "declarations/vox_populi_backend"
 
 export interface AnswerSelection {
   questionId: number
