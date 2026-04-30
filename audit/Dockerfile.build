@@ -1,110 +1,30 @@
-FROM --platform=linux/amd64 ubuntu:24.04
+FROM dfinity/sdk:0.32.0
 
-# Entorno determinista base
-ARG BUILD_EPOCH=1630454400
-ENV SOURCE_DATE_EPOCH=${BUILD_EPOCH}
-ENV TZ=UTC
-ENV LANG=C.UTF-8
-ENV DEBIAN_FRONTEND=noninteractive
+# Fijar entorno: Debian Bullseye, Node 20.11.1
+RUN apt-get update && apt-get install -y curl ca-certificates xz-utils && apt-get clean
 
-# Variables para versiones fijas
-ARG NODE_VERSION=20.11.1
-ARG DFX_VERSION=0.32.0
-ENV NODE_VERSION=${NODE_VERSION}
-ENV DFX_VERSION=${DFX_VERSION}
+# Instalar explícitamente Node.js 20.11.1 LTS
+RUN curl -fsSL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
 
 WORKDIR /canister
 
-# Instalar dependencias del sistema
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl xz-utils gnupg git build-essential python3 procps wget unzip \
-    patchelf file gzip bzip2 tar coreutils \
-    libssl-dev pkg-config \
-  && rm -rf /var/lib/apt/lists/*
+# Copiar el código fuente
+COPY . .
 
-# Instalar Node.js 20.11.1 desde binario oficial
-RUN set -eux; \
-    ARCH=$(dpkg --print-architecture); \
-    case "$ARCH" in \
-      amd64) NODE_DIST=linux-x64 ;; \
-      arm64) NODE_DIST=linux-arm64 ;; \
-      *) echo "Arquitectura no soportada: $ARCH"; exit 1 ;; \
-    esac; \
-    NODE_TARBALL=node-v${NODE_VERSION}-${NODE_DIST}.tar.xz; \
-    NODE_URL=https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}; \
-    echo "Descargando Node.js ${NODE_VERSION} desde ${NODE_URL}..."; \
-    curl -fSL "$NODE_URL" -o /tmp/${NODE_TARBALL}; \
-    tar -xJf /tmp/${NODE_TARBALL} -C /usr/local --strip-components=1; \
-    rm -f /tmp/${NODE_TARBALL}; \
-    node --version; npm --version
+# Configurar npm para usar npm ci y garantizar consistencia con package-lock.json
+RUN npm ci
 
-# Instalar DFX 0.32.0 desde el tarball oficial publicado por dfinity/sdk.
-RUN set -eux; \
-  DFX_BASENAME=dfx-x86_64-unknown-linux-gnu; \
-  DFX_TARBALL=${DFX_BASENAME}.tar.gz; \
-  DFX_SHA256=${DFX_TARBALL}.sha256; \
-  DFX_RELEASE_ROOT=https://github.com/dfinity/sdk/releases/download/${DFX_VERSION}; \
-  echo "Descargando DFX ${DFX_VERSION} desde ${DFX_RELEASE_ROOT}..."; \
-  curl -fSL "${DFX_RELEASE_ROOT}/${DFX_TARBALL}" -o /tmp/${DFX_TARBALL}; \
-  curl -fSL "${DFX_RELEASE_ROOT}/${DFX_SHA256}" -o /tmp/${DFX_SHA256}; \
-  (cd /tmp && sha256sum -c ${DFX_SHA256}); \
-  mkdir -p /tmp/dfx-extract /usr/local/bin; \
-  tar -xzf /tmp/${DFX_TARBALL} -C /tmp/dfx-extract; \
-  cp /tmp/dfx-extract/${DFX_BASENAME}/dfx /usr/local/bin/dfx; \
-  rm -f /tmp/${DFX_TARBALL} /tmp/${DFX_SHA256}; \
-  chmod +x /usr/local/bin/dfx; \
-  dfx --version
+# Fijar variables de entorno para una compilación determinista absoluta
+ENV SOURCE_DATE_EPOCH=0
+ENV TZ=UTC
+ENV DFX_MOC_PATH=""
 
-# Configurar npm para reproducibilidad
-ENV NPM_CONFIG_LOGLEVEL=warn
-ENV PATH="/usr/local/bin:$PATH"
+RUN echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Debian Bullseye..."
 
-# Copiar código fuente
-COPY . /canister
+# Ejecutar dfx build --network ic backend con variables limpias
+RUN echo "Construyendo el backend de forma determinista..."
+RUN dfx build --network ic vox_populi_backend
 
-# Fijar timestamps de archivos fuente para reproducibilidad
-RUN find /canister -exec touch -h -d @${SOURCE_DATE_EPOCH} {} + || true
-
-# Ejecutar compilación: dfx build para vox_populi_backend + npm run build para frontend
-RUN set -eux; \
-  export TZ=UTC; export LANG=C.UTF-8; export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}; \
-  export DFX_HOME=/tmp/dfx_home; mkdir -p /tmp/dfx_home; \
-  export PATH="/usr/local/bin:$PATH"; \
-    # Validar instalación
-    dfx --version; \
-    echo "Iniciando dfx build para 'vox_populi_backend' (red: ic) con entorno estable..."; \
-    # Ejecutar build
-    dfx build --network ic vox_populi_backend || (echo 'dfx build falló'; exit 1); \
-    # Encontrar y procesar WASM
-    WASM_PATH=$(find . -type f -name "*.wasm" -print | grep -v node_modules | head -n1 || true); \
-    if [ -z "$WASM_PATH" ]; then echo "Error: no se generó archivo .wasm"; exit 2; fi; \
-    echo "WASM generado en: $WASM_PATH"; \
-    # Crear directorio de salida
-    mkdir -p /out/dist /out/artifacts; \
-    # Copiar WASM a salida
-    cp "$WASM_PATH" /out/backend.wasm; \
-    echo "SHA256 del wasm: $(sha256sum /out/backend.wasm)"; \
-    # Construir frontend si existe
-    if [ -f vox_populi_frontend/package-lock.json ]; then \
-      echo "Compilando frontend desde vox_populi_frontend..."; \
-      cd vox_populi_frontend; \
-      npm ci --no-audit --prefer-offline; \
-      npm run build --if-present; \
-      cp -a dist /out/dist || true; \
-      cd /canister; \
-    elif [ -f frontend/package-lock.json ]; then \
-      echo "Compilando frontend desde frontend..."; \
-      cd frontend; \
-      npm ci --no-audit --prefer-offline; \
-      npm run build --if-present; \
-      cp -a dist /out/dist || true; \
-      cd /canister; \
-    else \
-      echo "Advertencia: no se encontró package-lock.json para frontend"; \
-    fi; \
-    # Normalizar timestamps finales
-    find /out -type f -exec touch -d @${SOURCE_DATE_EPOCH} {} + || true; \
-    echo "Build completado exitosamente"; \
-    ls -lah /out/
-
-CMD ["/bin/sh", "-c", "echo 'Contenedor de build finalizado' && ls -la /out || true"]
+# Ejecutar npm run build para el frontend
+RUN echo "Construyendo el frontend de forma determinista..."
+RUN npm run build

@@ -43,11 +43,12 @@ Workflow de GitHub Actions que:
 - **Verifica**: Calcula y registra SHA256 del Wasm
 - **Publica**: Artefactos en GitHub (accesibles vía `gh run download`)
 
-### 3. **build_and_deploy.sh**
-Script full-auto de despliegue en Mainnet:
+### 3. **trigger_build.sh** y **deploy.sh**
+Scripts automatizados para construcción remota y despliegue en Mainnet. Separados para garantizar un control paso a paso.
 
 ```bash
-./audit/build_and_deploy.sh v1.2.3
+./audit/trigger_build.sh v1.2.3
+./audit/deploy.sh
 ```
 
 **Fases ejecutadas automáticamente:**
@@ -65,7 +66,8 @@ Script full-auto de despliegue en Mainnet:
 
 **Ejemplo:**
 ```bash
-./audit/build_and_deploy.sh v1.0.0
+./audit/trigger_build.sh v1.0.0
+./audit/deploy.sh
 ```
 
 Output:
