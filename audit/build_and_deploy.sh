@@ -136,8 +136,8 @@ CANISTER_ASSETS_RAW=$(dfx canister --network ic call vox_populi_backend list_ass
 set -e
 
 echo "Integridad: calculando SHA256 locales y comparando con datos on-chain..."
-LOCAL_WASM_SHA=$(sha256sum ./audit_artifacts/backend.wasm | awk '{print $1}')
-echo "SHA256 local de backend.wasm: ${LOCAL_WASM_SHA}"
+LOCAL_WASM_SHA=$(sha256sum "$BACKEND_WASM" | awk '{print $1}')
+echo "SHA256 local (${BACKEND_WASM}): ${LOCAL_WASM_SHA}"
 
 echo "Salida on-chain (raw):"
 echo "$CANISTER_ASSETS_RAW"
