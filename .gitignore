@@ -15,8 +15,7 @@
 dist/
 .svelte-kit/
 target/
-audit_artifacts/*
-!audit_artifacts/.gitignore
+audit_artifacts/
 
 # Dependencias
 node_modules/
