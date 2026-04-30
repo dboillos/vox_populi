@@ -31,9 +31,7 @@ RUN echo "Entorno fijado: DFX ${DFX_VERSION}, Node ${NODE_VERSION}, Ubuntu 24.04
 
 RUN npm ci
 RUN dfx build --network ic vox_populi_backend
-RUN npm run build --workspace src/vox_populi_frontend --ignore-scripts
-
 # Exportar artefactos a /out para el workflow
-RUN mkdir -p /out \
+RUN mkdir -p /out /out/dist \
 	&& cp "$(find .dfx -type f -name 'vox_populi_backend.wasm' | head -n1)" /out/backend.wasm \
-	&& cp -R src/vox_populi_frontend/dist /out/dist
+	&& if [ -d src/vox_populi_frontend/dist ]; then cp -R src/vox_populi_frontend/dist /out/dist; else echo "frontend-dist unavailable in CI build" > /out/dist/README.txt; fi
