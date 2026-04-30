@@ -105,19 +105,21 @@ if [ $RC -ne 0 ]; then
     else
       while true; do
         read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
-        break_flag=0
         case "$yn" in
-          [Yy]* ) break_flag=1; break;;
-          [Nn]*|"" ) break;;
-          * ) echo "Respuesta no válida — responde y (sí) o n (no).";;
+          [Yy]*|[Nn]*|"") break ;;
+          *) echo "Respuesta no válida — responde y (sí) o n (no)." ;;
         esac
-        if [ $break_flag -eq 1 ]; then break; fi
       done
     fi
-    if [ "${yn:-n}" != "" ] && (echo "$yn" | grep -qi "^[Yy]"); then
+
+    if echo "${yn:-n}" | grep -qi "^[Yy]"; then
       echo "Ejecutando reinstall (SE PERDERÁ EL ESTADO)..."
       set +e
-      dfx canister --network ic install vox_populi_backend --mode reinstall --wasm "$BACKEND_WASM"
+      if [ "${AUTO_CONFIRM_REINSTALL:-0}" = "1" ]; then
+        dfx canister --network ic install vox_populi_backend --mode reinstall --yes --wasm "$BACKEND_WASM"
+      else
+        dfx canister --network ic install vox_populi_backend --mode reinstall --wasm "$BACKEND_WASM"
+      fi
       RC2=$?
       set -e
       if [ $RC2 -ne 0 ]; then
@@ -128,10 +130,9 @@ if [ $RC -ne 0 ]; then
       echo "Abortando despliegue por elección del usuario." >&2
       exit 1
     fi
-    done
-    else
-      echo "Intentando deploy alternativo..."
-      dfx deploy --network ic --no-wallet || true
+  else
+    echo "Intentando deploy alternativo..."
+    dfx deploy --network ic --no-wallet || true
   fi
 fi
 
