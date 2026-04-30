@@ -41,7 +41,7 @@ Workflow de GitHub Actions que:
 - **Build**: Usa `audit/Dockerfile.build`
 - **Extrae**: `backend.wasm` y `dist/` del contenedor
 - **Verifica**: Calcula y registra SHA256 del Wasm
-- **Publica**: Artefactos en GitHub (accesibles vía `gh run download`)
+- **Publica**: Assets en el Release del tag (accesibles vía `gh release download`)
 
 ### 3. **build.sh** y **deploy.sh**
 Scripts automatizados para construcción remota y despliegue en Mainnet. Separados para garantizar un control paso a paso.
@@ -93,7 +93,7 @@ Script de auditoría forense independiente:
 ```
 
 **Función:**
-- Descarga artefactos de GitHub Actions correspondientes al tag
+- Descarga backend.wasm desde los assets del release correspondiente al tag
 - Calcula SHA256 locales de todos los archivos
 - Consulta la Mainnet via `dfx canister call backend list_assets`
 - Compara hashes against on-chain values

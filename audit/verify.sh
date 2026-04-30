@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+
+export GH_PAGER=cat
 
 if [ -z "${1:-}" ]; then
   echo "Error: Debe proporcionar un Tag como argumento. Ejemplo: $0 v1.2.3"
@@ -10,22 +12,10 @@ TAG="$1"
 echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Debian Bullseye..."
 echo "Iniciando auditoría forense para la versión $TAG..."
 
-COMMIT=$(git rev-list -n 1 "$TAG" 2>/dev/null || git ls-remote --tags origin "refs/tags/${TAG}^{}" | awk '{print $1}')
-if [ -z "$COMMIT" ]; then
-  echo "Error: No se pudo resolver el commit asociado al tag $TAG."
-  exit 1
-fi
-
-RUN_ID=$(gh run list --json databaseId,headSha --jq "[.[] | select(.headSha == \"$COMMIT\") | .databaseId][0]")
-if [ -z "$RUN_ID" ] || [ "$RUN_ID" == "null" ]; then
-  echo "Error: No se halló ejecución en GitHub Actions."
-  exit 1
-fi
-
-echo "Descargando artefactos forenses (Run ID: $RUN_ID)..."
+echo "Descargando artefactos forenses del release $TAG..."
 rm -rf ./audit_forensic_artifacts
 mkdir -p ./audit_forensic_artifacts
-gh run download "$RUN_ID" --dir ./audit_forensic_artifacts
+gh release download "$TAG" --dir ./audit_forensic_artifacts --pattern "backend.wasm"
 
 BACKEND_WASM=$(find ./audit_forensic_artifacts -name "backend.wasm" | head -n 1)
 if [ -z "$BACKEND_WASM" ]; then

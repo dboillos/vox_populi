@@ -76,7 +76,7 @@ grep -q "SOURCE_DATE_EPOCH" audit/Dockerfile.build && pass "Dockerfile.build imp
 # Verificar workflow
 grep -q "v\*" .github/workflows/trusted-release-pipeline.yml && pass "Workflow dispara en tags v*" || fail "Workflow no dispara correctamente"
 grep -q "docker build -f audit/Dockerfile.build" .github/workflows/trusted-release-pipeline.yml && pass "Workflow usa audit/Dockerfile.build" || fail "Workflow usa ruta incorrecta"
-grep -q "upload-artifact" .github/workflows/trusted-release-pipeline.yml && pass "Workflow publica artefactos" || fail "Workflow no publica artefactos"
+grep -q "gh release upload" .github/workflows/trusted-release-pipeline.yml && pass "Workflow publica assets en release" || fail "Workflow no publica assets en release"
 
 echo ""
 echo "🔍 Validando contenido de seguridad..."

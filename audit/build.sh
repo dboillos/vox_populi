@@ -52,7 +52,26 @@ gh run watch "$RUN_ID"
 echo "Descargando artefactos de forma 100% automatizada..."
 rm -rf ./audit_artifacts
 mkdir -p ./audit_artifacts
-gh run download "$RUN_ID" --dir ./audit_artifacts
+
+DOWNLOAD_OK=0
+for i in {1..12}; do
+  if gh release download "$TAG" --dir ./audit_artifacts --pattern "backend.wasm" --pattern "frontend-dist.tgz"; then
+    DOWNLOAD_OK=1
+    break
+  fi
+  echo "Intento $i: assets del release aún no disponibles, reintentando..."
+  sleep 5
+done
+
+if [ "$DOWNLOAD_OK" -ne 1 ]; then
+  echo "Error: no se pudieron descargar los assets del release para $TAG." >&2
+  exit 5
+fi
+
+mkdir -p ./audit_artifacts/backend-wasm ./audit_artifacts/frontend-dist
+mv -f ./audit_artifacts/backend.wasm ./audit_artifacts/backend-wasm/backend.wasm
+tar -xzf ./audit_artifacts/frontend-dist.tgz -C ./audit_artifacts/frontend-dist
+rm -f ./audit_artifacts/frontend-dist.tgz
 
 BACKEND_WASM=$(find ./audit_artifacts -type f -name "backend.wasm" | head -n 1 || true)
 FRONTEND_INDEX=$(find ./audit_artifacts -type f -path "*/frontend-dist/index.html" | head -n 1 || true)
