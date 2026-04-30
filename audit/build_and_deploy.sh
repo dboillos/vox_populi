@@ -68,12 +68,22 @@ echo "Cambiando identidad a prod_deployer para proceder al despliegue..."
 dfx identity use prod_deployer
 
 echo "Instalando Wasm y activos en la Mainnet (NO se ejecuta dfx build localmente)."
-if [ ! -f ./audit_artifacts/backend.wasm ]; then
+# Localizar backend.wasm en los posibles lugares donde gh run download lo coloca
+BACKEND_WASM=""
+if [ -f ./audit_artifacts/backend.wasm ]; then
+  BACKEND_WASM="./audit_artifacts/backend.wasm"
+elif [ -f ./audit_artifacts/backend-wasm/backend.wasm ]; then
+  BACKEND_WASM="./audit_artifacts/backend-wasm/backend.wasm"
+fi
+
+if [ -z "$BACKEND_WASM" ]; then
   echo "Error: backend.wasm no encontrado en ./audit_artifacts" >&2; exit 6
 fi
 
+echo "Instalando canister usando wasm: $BACKEND_WASM"
+
 echo "Instalando canister 'vox_populi_backend' con el .wasm descargado..."
-set +e; dfx canister --network ic install vox_populi_backend --mode upgrade --wasm ./audit_artifacts/backend.wasm; RC=$?; set -e
+set +e; dfx canister --network ic install vox_populi_backend --mode upgrade --wasm "$BACKEND_WASM"; RC=$?; set -e
 if [ $RC -ne 0 ]; then
   echo "Advertencia: comando de install devolvió código $RC. Intentando deploy alternativo..."
   dfx deploy --network ic --no-wallet || true
