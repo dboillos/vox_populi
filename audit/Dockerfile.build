@@ -38,19 +38,25 @@ RUN set -eux; \
     rm -f /tmp/${NODE_TARBALL}; \
     node --version; npm --version
 
-# Instalar DFX 0.32.0 desde script oficial
+# Instalar DFX 0.32.0 desde el tarball oficial publicado por dfinity/sdk.
 RUN set -eux; \
-    echo "Instalando DFX ${DFX_VERSION}..."; \
-    curl -fsSL https://sdk.dfinity.org/install.sh | bash; \
-    echo "Agregando DFX al PATH..."; \
-    echo 'export PATH="$HOME/.local/share/dfx/bin:$PATH"' >> /root/.bashrc; \
-    export PATH="/root/.local/share/dfx/bin:$PATH"; \
-    which dfx; \
-    dfx --version
+  DFX_BASENAME=dfx-x86_64-unknown-linux-gnu; \
+  DFX_TARBALL=${DFX_BASENAME}.tar.gz; \
+  DFX_SHA256=${DFX_TARBALL}.sha256; \
+  DFX_RELEASE_ROOT=https://github.com/dfinity/sdk/releases/download/${DFX_VERSION}; \
+  echo "Descargando DFX ${DFX_VERSION} desde ${DFX_RELEASE_ROOT}..."; \
+  curl -fSL "${DFX_RELEASE_ROOT}/${DFX_TARBALL}" -o /tmp/${DFX_TARBALL}; \
+  curl -fSL "${DFX_RELEASE_ROOT}/${DFX_SHA256}" -o /tmp/${DFX_SHA256}; \
+  (cd /tmp && sha256sum -c ${DFX_SHA256}); \
+  mkdir -p /usr/local/bin; \
+  tar -xzf /tmp/${DFX_TARBALL} -C /usr/local/bin; \
+  rm -f /tmp/${DFX_TARBALL} /tmp/${DFX_SHA256}; \
+  chmod +x /usr/local/bin/dfx; \
+  dfx --version
 
 # Configurar npm para reproducibilidad
 ENV NPM_CONFIG_LOGLEVEL=warn
-ENV PATH="/root/.local/share/dfx/bin:$PATH"
+ENV PATH="/usr/local/bin:$PATH"
 
 # Copiar código fuente
 COPY . /canister
@@ -60,9 +66,9 @@ RUN find /canister -exec touch -h -d @${SOURCE_DATE_EPOCH} {} + || true
 
 # Ejecutar compilación: dfx build para backend + npm run build para frontend
 RUN set -eux; \
-    export TZ=UTC; export LANG=C.UTF-8; export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}; \
-    export DFX_HOME=/tmp/dfx_home; mkdir -p /tmp/dfx_home; \
-    export PATH="/root/.local/share/dfx/bin:$PATH"; \
+  export TZ=UTC; export LANG=C.UTF-8; export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH}; \
+  export DFX_HOME=/tmp/dfx_home; mkdir -p /tmp/dfx_home; \
+  export PATH="/usr/local/bin:$PATH"; \
     # Validar instalación
     dfx --version; \
     echo "Iniciando dfx build para 'backend' (red: ic) con entorno estable..."; \

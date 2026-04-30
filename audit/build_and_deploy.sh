@@ -8,7 +8,7 @@ fi
 
 TAG="$1"
 
-echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Imagen base: Debian Bullseye (dfinity/sdk:0.32.0)"
+echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Base: Debian Bullseye con DFX oficial descargado desde GitHub Releases"
 echo "Iniciando proceso automático y determinista de construcción y despliegue para el tag: ${TAG}"
 
 # Trap para restaurar identidad a anonymous independientemente del resultado
