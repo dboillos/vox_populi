@@ -17,7 +17,7 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
 	| tar -xJ -C /usr/local --strip-components=1
 
 # Instalar DFX fijado
-RUN DFX_VERSION=${DFX_VERSION} sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+RUN DFX_VERSION=${DFX_VERSION} DFXVM_INIT_YES=1 sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
 ENV PATH="/root/.local/share/dfx/bin:${PATH}"
 
 WORKDIR /canister
