@@ -34,7 +34,7 @@ echo "Esperando a que GitHub Actions registre la ejecución para el commit $COMM
 # Fase Polling
 RUN_ID=""
 for i in {1..30}; do
-  RUN_ID=$(gh run list --json databaseId,headSha,event --jq "[.[] | select(.headSha == \"$COMMIT\") | .databaseId][0]")
+  RUN_ID=$(gh run list --json databaseId,headBranch,headSha,event --jq "[.[] | select(.headBranch == \"$TAG\" and .event == \"push\") | .databaseId][0]")
   if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ]; then
     break
   fi
