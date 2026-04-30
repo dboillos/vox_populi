@@ -1,30 +1,39 @@
-FROM dfinity/sdk:0.32.0
+FROM ubuntu:24.04
 
-# Fijar entorno: Debian Bullseye, Node 20.11.1
-RUN apt-get update && apt-get install -y curl ca-certificates xz-utils && apt-get clean
+ARG DEBIAN_FRONTEND=noninteractive
+ARG NODE_VERSION=20.11.1
+ARG DFX_VERSION=0.32.0
 
-# Instalar explícitamente Node.js 20.11.1 LTS
-RUN curl -fsSL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+		ca-certificates \
+		curl \
+		git \
+		xz-utils \
+		jq \
+		&& rm -rf /var/lib/apt/lists/*
+
+# Instalar Node.js fijado
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+	| tar -xJ -C /usr/local --strip-components=1
+
+# Instalar DFX fijado
+RUN DFX_VERSION=${DFX_VERSION} sh -ci "$(curl -fsSL https://internetcomputer.org/install.sh)"
+ENV PATH="/root/.local/share/dfx/bin:${PATH}"
 
 WORKDIR /canister
-
-# Copiar el código fuente
 COPY . .
 
-# Configurar npm para usar npm ci y garantizar consistencia con package-lock.json
-RUN npm ci
-
-# Fijar variables de entorno para una compilación determinista absoluta
 ENV SOURCE_DATE_EPOCH=0
 ENV TZ=UTC
-ENV DFX_MOC_PATH=""
+ENV LANG=C.UTF-8
 
-RUN echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Debian Bullseye..."
+RUN echo "Entorno fijado: DFX ${DFX_VERSION}, Node ${NODE_VERSION}, Ubuntu 24.04..."
 
-# Ejecutar dfx build --network ic backend con variables limpias
-RUN echo "Construyendo el backend de forma determinista..."
+RUN npm ci
 RUN dfx build --network ic vox_populi_backend
-
-# Ejecutar npm run build para el frontend
-RUN echo "Construyendo el frontend de forma determinista..."
 RUN npm run build
+
+# Exportar artefactos a /out para el workflow
+RUN mkdir -p /out \
+	&& cp "$(find .dfx -type f -name 'vox_populi_backend.wasm' | head -n1)" /out/backend.wasm \
+	&& cp -R src/vox_populi_frontend/dist /out/dist
