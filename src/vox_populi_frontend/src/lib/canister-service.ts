@@ -122,6 +122,10 @@ interface FrontendAssetActor {
   list: (args: { start: [] | [bigint]; length: [] | [bigint] }) => Promise<FrontendAssetListEntry[]>
 }
 
+interface FrontendAssetActorOptions {
+  host?: string
+}
+
 const embeddedBackendCanisterId = (
   import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND ||
   import.meta.env.VITE_BACKEND_CANISTER_ID_IC ||
@@ -222,13 +226,16 @@ async function getBackendActor(): Promise<BackendActor> {
   return cachedActorPromise
 }
 
-async function getFrontendAssetActor(frontendCanisterId: string): Promise<FrontendAssetActor> {
+async function getFrontendAssetActor(frontendCanisterId: string, options: FrontendAssetActorOptions = {}): Promise<FrontendAssetActor> {
   const normalizedCanisterId = frontendCanisterId.trim()
   if (!normalizedCanisterId) {
     throw new Error("No se ha encontrado el CANISTER_ID_VOX_POPULI_FRONTEND")
   }
 
-  const cached = frontendAssetActorCache.get(normalizedCanisterId)
+  const targetHost = (options.host || IC_HOST).trim()
+  const cacheKey = `${normalizedCanisterId}@${targetHost}`
+
+  const cached = frontendAssetActorCache.get(cacheKey)
   if (cached) {
     return cached
   }
@@ -236,16 +243,16 @@ async function getFrontendAssetActor(frontendCanisterId: string): Promise<Fronte
   const actorPromise = Promise.resolve(
     createFrontendAssetActor(normalizedCanisterId, {
       agentOptions: {
-        host: IC_HOST,
+        host: targetHost,
         verifyQuerySignatures: !IS_LOCAL_RUNTIME,
       },
     }) as unknown as FrontendAssetActor,
   ).catch((error) => {
-    frontendAssetActorCache.delete(normalizedCanisterId)
+    frontendAssetActorCache.delete(cacheKey)
     throw error
   })
 
-  frontendAssetActorCache.set(normalizedCanisterId, actorPromise)
+  frontendAssetActorCache.set(cacheKey, actorPromise)
   return actorPromise
 }
 
@@ -364,8 +371,8 @@ export const canisterService = {
     })
   },
 
-  async getFrontendAssetHashes(frontendCanisterId: string): Promise<FrontendAssetHashEntry[]> {
-    const actor = await getFrontendAssetActor(frontendCanisterId)
+  async getFrontendAssetHashes(frontendCanisterId: string, options: FrontendAssetActorOptions = {}): Promise<FrontendAssetHashEntry[]> {
+    const actor = await getFrontendAssetActor(frontendCanisterId, options)
     const entries = await actor.list({ start: [], length: [] })
 
     return entries

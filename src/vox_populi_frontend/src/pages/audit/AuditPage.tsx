@@ -64,7 +64,9 @@ export function AuditPage({ onBack }: AuditPageProps) {
         .catch(() => setFrontendModuleHash(null))
         .finally(() => setIsFrontendHashLoading(false))
 
-      void canisterService.getFrontendAssetHashes(frontendCanisterId)
+      // Para auditoría, los hashes de assets deben reflejar SIEMPRE mainnet,
+      // incluso cuando el frontend se está ejecutando en localhost.
+      void canisterService.getFrontendAssetHashes(frontendCanisterId, { host: "https://ic0.app" })
         .then((entries) => setFrontendAssetHashes(entries))
         .catch(() => setFrontendAssetHashes([]))
         .finally(() => setIsFrontendAssetsLoading(false))
