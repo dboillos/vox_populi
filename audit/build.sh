@@ -10,7 +10,7 @@ if [ -z "${1:-}" ]; then
 fi
 
 TAG="$1"
-echo "Entorno fijado: DFX 0.32.0, Node 20.11.1, Debian Bullseye..."
+echo "Entorno: DFX 0.32.0, Node 20.11.1, Debian Bullseye"
 
 # Fase Git
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -24,7 +24,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-echo "Creando Tag $TAG y ejecutando push a GitHub para desencadenar el Pipeline de Confianza..."
+echo "Creando tag $TAG y publicándolo en GitHub para iniciar el pipeline de release"
 git tag -a "$TAG" -m "Release Trusted Build $TAG"
 git push origin "$TAG"
 
@@ -49,7 +49,7 @@ fi
 gh run watch "$RUN_ID"
 
 # Fase Descarga
-echo "Descargando artefactos de forma 100% automatizada..."
+echo "Descargando artefactos del release..."
 rm -rf ./audit_artifacts
 mkdir -p ./audit_artifacts
 
@@ -59,7 +59,7 @@ for i in {1..12}; do
     DOWNLOAD_OK=1
     break
   fi
-  echo "Intento $i: assets del release aún no disponibles, reintentando..."
+  echo "Intento $i: los assets del release aún no están disponibles; se reintentará en 5 segundos"
   sleep 5
 done
 

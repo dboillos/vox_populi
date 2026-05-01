@@ -16,6 +16,7 @@ dist/
 .svelte-kit/
 target/
 audit_artifacts/
+audit_forensic_artifacts/
 
 # Dependencias
 node_modules/
