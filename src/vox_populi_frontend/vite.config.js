@@ -49,6 +49,8 @@ function resolveGitCommitRef() {
 }
 
 const mainnetBackendCanisterId = resolveMainnetCanisterId('vox_populi_backend');
+const mainnetFrontendCanisterId = resolveMainnetCanisterId('vox_populi_frontend');
+
 
 const rawGithubReleaseTag = (process.env.VITE_GITHUB_RELEASE_TAG || '').trim();
 const autoGitTagRef = resolveGitTagRef();
@@ -63,6 +65,11 @@ const githubReleaseTag =
 
 export default defineConfig({
   define: {
+    // DFX_NETWORK fijado a "ic" para que la declaración generada por dfx
+    // no llame fetchRootKey() al cargar el módulo en producción.
+    'process.env.DFX_NETWORK': JSON.stringify('ic'),
+    'import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(mainnetBackendCanisterId),
+    'import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(mainnetFrontendCanisterId),
     'import.meta.env.VITE_GITHUB_RELEASE_TAG': JSON.stringify(githubReleaseTag),
     'import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO': JSON.stringify(autoGithubReleaseTag),
     'import.meta.env.VITE_GITHUB_GIT_TAG_AUTO': JSON.stringify(autoGitTagRef),

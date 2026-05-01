@@ -1,18 +1,22 @@
 [
     {
         "match": "**/*",
-
-        // En local, la policy "standard" añade una cabecera Permissions-Policy
-        // con features no reconocidas por algunos navegadores, generando ruido en consola.
-        // La desactivamos para evitar esos warnings durante desarrollo/pruebas.
-        // Opciones: "hardened" | "standard" | "disabled".
-        "security_policy": "disabled",
-
-        // Uncomment to disable the warning about using the
-        // standard security policy, if you understand the risk
-        // "disable_security_policy_warning": true,
-
-        // Uncomment to redirect all requests from .raw.icp0.io to .icp0.io
-        // "allow_raw_access": false
+        "security_policy": "disabled"
     },
+    {
+        // index.html nunca debe cachearse: referencia JS/CSS con hash que cambia en cada release.
+        // Sin esto, los navegadores sirven el index.html antiguo tras un deploy y obtienen 503
+        // al intentar cargar bundles que ya no existen en el canister.
+        "match": "index.html",
+        "headers": {
+            "Cache-Control": "no-store, no-cache, must-revalidate"
+        }
+    },
+    {
+        // Assets con hash en el nombre son inmutables: se cachean indefinidamente.
+        "match": "assets/**",
+        "headers": {
+            "Cache-Control": "public, max-age=31536000, immutable"
+        }
+    }
 ]
