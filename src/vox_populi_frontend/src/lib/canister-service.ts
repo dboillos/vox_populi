@@ -1,5 +1,6 @@
 import { Principal } from "@icp-sdk/core/principal"
-import { createActor, canisterId as generatedCanisterId } from "declarations/vox_populi_backend"
+import { createActor as createBackendActor, canisterId as generatedCanisterId } from "declarations/vox_populi_backend"
+import { createActor as createFrontendAssetActor } from "declarations/vox_populi_frontend"
 
 export interface AnswerSelection {
   questionId: number
@@ -63,6 +64,11 @@ export interface GoogleTokenValidation {
   reason: string
 }
 
+export interface FrontendAssetHashEntry {
+  file: string
+  hash: string
+}
+
 interface BackendVoteResponse {
   success: boolean
   message: string
@@ -99,6 +105,23 @@ interface BackendActor {
   }>
 }
 
+interface FrontendAssetEncoding {
+  modified: bigint
+  sha256: [] | [Uint8Array | number[]]
+  length: bigint
+  content_encoding: string
+}
+
+interface FrontendAssetListEntry {
+  key: string
+  encodings: FrontendAssetEncoding[]
+  content_type: string
+}
+
+interface FrontendAssetActor {
+  list: (args: { start: [] | [bigint]; length: [] | [bigint] }) => Promise<FrontendAssetListEntry[]>
+}
+
 const embeddedBackendCanisterId = (
   import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND ||
   import.meta.env.VITE_BACKEND_CANISTER_ID_IC ||
@@ -132,6 +155,7 @@ const IC_HOST =
     : "https://ic0.app"
 
 let cachedActorPromise: Promise<BackendActor> | null = null
+const frontendAssetActorCache = new Map<string, Promise<FrontendAssetActor>>()
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -177,7 +201,7 @@ async function getBackendActor(): Promise<BackendActor> {
 
   if (!cachedActorPromise) {
     cachedActorPromise = (async () => {
-      const actor = createActor(CANISTER_ID, {
+      const actor = createBackendActor(CANISTER_ID, {
         agentOptions: {
           host: IC_HOST,
           // En local la verificacion criptografica de firmas de query puede fallar
@@ -196,6 +220,39 @@ async function getBackendActor(): Promise<BackendActor> {
   }
 
   return cachedActorPromise
+}
+
+async function getFrontendAssetActor(frontendCanisterId: string): Promise<FrontendAssetActor> {
+  const normalizedCanisterId = frontendCanisterId.trim()
+  if (!normalizedCanisterId) {
+    throw new Error("No se ha encontrado el CANISTER_ID_VOX_POPULI_FRONTEND")
+  }
+
+  const cached = frontendAssetActorCache.get(normalizedCanisterId)
+  if (cached) {
+    return cached
+  }
+
+  const actorPromise = Promise.resolve(
+    createFrontendAssetActor(normalizedCanisterId, {
+      agentOptions: {
+        host: IC_HOST,
+        verifyQuerySignatures: !IS_LOCAL_RUNTIME,
+      },
+    }) as unknown as FrontendAssetActor,
+  ).catch((error) => {
+    frontendAssetActorCache.delete(normalizedCanisterId)
+    throw error
+  })
+
+  frontendAssetActorCache.set(normalizedCanisterId, actorPromise)
+  return actorPromise
+}
+
+function bytesToHex(bytes: Uint8Array | number[]): string {
+  return Array.from(bytes)
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
 }
 
 function bigintToNumber(value: bigint): number {
@@ -305,6 +362,26 @@ export const canisterService = {
       const actor = await getBackendActor()
       return actor.getModuleHash(canisterId)
     })
+  },
+
+  async getFrontendAssetHashes(frontendCanisterId: string): Promise<FrontendAssetHashEntry[]> {
+    const actor = await getFrontendAssetActor(frontendCanisterId)
+    const entries = await actor.list({ start: [], length: [] })
+
+    return entries
+      .map((entry) => {
+        const identityEncoding = entry.encodings.find((encoding) => encoding.content_encoding === "identity")
+        if (!identityEncoding || identityEncoding.sha256.length === 0) {
+          return null
+        }
+
+        return {
+          file: entry.key.startsWith("/") ? entry.key.slice(1) : entry.key,
+          hash: bytesToHex(identityEncoding.sha256[0]),
+        }
+      })
+      .filter((entry): entry is FrontendAssetHashEntry => entry !== null)
+      .sort((left, right) => left.file.localeCompare(right.file))
   },
 
   async hasUserVoted(surveyId: string, anonymousId: string): Promise<boolean> {

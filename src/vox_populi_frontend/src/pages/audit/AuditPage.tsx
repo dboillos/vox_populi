@@ -9,7 +9,6 @@ import { useLocale } from "../../lib/locale-context"
 import { InfoTerm } from "../../components/layout/info-term"
 import { Principal } from "@icp-sdk/core/principal"
 import { canisterService } from "../../lib/canister-service"
-import { FRONTEND_ASSETS_MAINNET } from "../../lib/i18n"
 import { canisterId as backendCanisterId } from "declarations/vox_populi_backend"
 
 const frontendCanisterId = (import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND as string || "").trim()
@@ -43,8 +42,10 @@ export function AuditPage({ onBack }: AuditPageProps) {
     codeVersion: string
   } | null>(null)
   const [frontendModuleHash, setFrontendModuleHash] = useState<string | null>(null)
+  const [frontendAssetHashes, setFrontendAssetHashes] = useState<Array<{ file: string; hash: string }>>([])
   const [isBackendAuditLoading, setIsBackendAuditLoading] = useState(true)
   const [isFrontendHashLoading, setIsFrontendHashLoading] = useState(true)
+  const [isFrontendAssetsLoading, setIsFrontendAssetsLoading] = useState(true)
   const [subnetId, setSubnetId] = useState<string | null>(null)
 
   // Recuperacion inicial del backend para version de codigo y metadatos disponibles.
@@ -62,8 +63,14 @@ export function AuditPage({ onBack }: AuditPageProps) {
         .then((hash) => setFrontendModuleHash(/^[0-9a-f]{64}$/.test(hash) ? hash : null))
         .catch(() => setFrontendModuleHash(null))
         .finally(() => setIsFrontendHashLoading(false))
+
+      void canisterService.getFrontendAssetHashes(frontendCanisterId)
+        .then((entries) => setFrontendAssetHashes(entries))
+        .catch(() => setFrontendAssetHashes([]))
+        .finally(() => setIsFrontendAssetsLoading(false))
     } else {
       setIsFrontendHashLoading(false)
+      setIsFrontendAssetsLoading(false)
     }
 
     // Obtener el subnet ID via IC public API usando siempre el canister ID de mainnet
@@ -276,12 +283,22 @@ export function AuditPage({ onBack }: AuditPageProps) {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-border/50">
-                              {FRONTEND_ASSETS_MAINNET.map((asset) => (
-                                <tr key={asset.file} className="hover:bg-muted/30 transition-colors">
-                                  <td className="py-1.5 px-2 text-muted-foreground font-mono text-xs break-all">{asset.file}</td>
-                                  <td className="py-1.5 px-2 text-muted-foreground font-mono text-xs break-all">{asset.hash}</td>
+                              {isFrontendAssetsLoading ? (
+                                <tr>
+                                  <td className="py-1.5 px-2 text-muted-foreground text-xs" colSpan={2}>{t.audit.loading}</td>
                                 </tr>
-                              ))}
+                              ) : frontendAssetHashes.length > 0 ? (
+                                frontendAssetHashes.map((asset) => (
+                                  <tr key={asset.file} className="hover:bg-muted/30 transition-colors">
+                                    <td className="py-1.5 px-2 text-muted-foreground font-mono text-xs break-all">{asset.file}</td>
+                                    <td className="py-1.5 px-2 text-muted-foreground font-mono text-xs break-all">{asset.hash}</td>
+                                  </tr>
+                                ))
+                              ) : (
+                                <tr>
+                                  <td className="py-1.5 px-2 text-muted-foreground text-xs" colSpan={2}>No disponible</td>
+                                </tr>
+                              )}
                             </tbody>
                           </table>
                         </div>

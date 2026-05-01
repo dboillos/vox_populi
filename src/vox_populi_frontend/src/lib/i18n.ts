@@ -5,15 +5,6 @@
 // Idiomas disponibles: Castellano (es), English (en), Català (ca)
 // ============================================================================
 
-// Frontend assets hashes from mainnet (verified via verify.sh v1.2.106)
-export const FRONTEND_ASSETS_MAINNET = [
-  { file: "index.html", hash: "a485f1f458f1cef92532b430442d74330cb6ab2110e3d2d76f40f5a088462c47" },
-  { file: "assets/index-b8500bfc.css", hash: "b8500bfc0f80892f0e37c8908cc6d9777049045eb80198426e7a15c8efbdd012" },
-  { file: "assets/index-d6970189.js", hash: "4f240015b536cfe5bc4c25d6f75ba8f4467ad8e8c5d47d45aaa28bbfd5e37e7c" },
-  { file: "favicon.ico", hash: "4e8d31b50ffb59695389d94e393d299c5693405a12f6ccd08c31bcf9b58db2d4" },
-  { file: "logo2.svg", hash: "037eb7ae523403daa588cf4f47a34c56a3f5de08a5a2dd2364839e45f14f4b8b" },
-]
-
 export type Locale = "es" | "en" | "ca"
 
 export const localeNames: Record<Locale, string> = {
