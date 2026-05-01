@@ -109,36 +109,49 @@ interface FrontendAssetEncoding {
   modified: bigint
   sha256: [] | [Uint8Array | number[]]
   length: bigint
+  content_encoding: string
 }
 
 interface FrontendAssetListEntry {
   key: string
-  encodings: Array<[string, FrontendAssetEncoding]>
+  encodings: FrontendAssetEncoding[]
   content_type: string
 }
 
 interface FrontendAssetActor {
-  list_permitted: () => Promise<FrontendAssetListEntry[]>
+  list: (args: { start: [] | [bigint]; length: [] | [bigint] }) => Promise<FrontendAssetListEntry[]>
 }
 
 const frontendAssetsIdlFactory: any = ({ IDL }: any) => {
+  const HeaderField = IDL.Tuple(IDL.Text, IDL.Text)
   const AssetEncodingDetails = IDL.Record({
-    certified: IDL.Bool,
-    hash: IDL.Vec(IDL.Nat8),
-    length: IDL.Nat,
     modified: IDL.Int,
     sha256: IDL.Opt(IDL.Vec(IDL.Nat8)),
+    length: IDL.Nat,
+    content_encoding: IDL.Text,
   })
 
-  const AssetDetailsResult = IDL.Record({
+  const AssetListEntry = IDL.Record({
     key: IDL.Text,
+    encodings: IDL.Vec(AssetEncodingDetails),
     content_type: IDL.Text,
-    encodings: IDL.Vec(IDL.Tuple(IDL.Text, AssetEncodingDetails)),
+    headers: IDL.Opt(IDL.Vec(HeaderField)),
+    is_aliased: IDL.Opt(IDL.Bool),
+    allow_raw_access: IDL.Opt(IDL.Bool),
+    max_age: IDL.Opt(IDL.Nat64),
   })
 
   return IDL.Service({
-    // list_permitted expone la metadata y hashes SHA-256 por encoding.
-    list_permitted: IDL.Func([], [IDL.Vec(AssetDetailsResult)], ["query"]),
+    list: IDL.Func(
+      [
+        IDL.Record({
+          start: IDL.Opt(IDL.Nat),
+          length: IDL.Opt(IDL.Nat),
+        }),
+      ],
+      [IDL.Vec(AssetListEntry)],
+      ["query"],
+    ),
   })
 }
 
@@ -404,18 +417,18 @@ export const canisterService = {
 
   async getFrontendAssetHashes(frontendCanisterId: string, options: FrontendAssetActorOptions = {}): Promise<FrontendAssetHashEntry[]> {
     const actor = await getFrontendAssetActor(frontendCanisterId, options)
-    const entries = await actor.list_permitted()
+    const entries = await actor.list({ start: [], length: [] })
 
     return entries
       .map((entry) => {
-        const identityEncoding = entry.encodings.find(([name]) => name === "identity")
-        if (!identityEncoding || identityEncoding[1].sha256.length === 0) {
+        const identityEncoding = entry.encodings.find((encoding) => encoding.content_encoding === "identity")
+        if (!identityEncoding || identityEncoding.sha256.length === 0) {
           return null
         }
 
         return {
           file: entry.key.startsWith("/") ? entry.key.slice(1) : entry.key,
-          hash: bytesToHex(identityEncoding[1].sha256[0]),
+          hash: bytesToHex(identityEncoding.sha256[0]),
         }
       })
       .filter((entry): entry is FrontendAssetHashEntry => entry !== null)
