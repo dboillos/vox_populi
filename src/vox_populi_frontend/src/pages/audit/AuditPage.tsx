@@ -106,7 +106,12 @@ export function AuditPage({ onBack }: AuditPageProps) {
   const githubCommitUrl = githubCommitRef ? `${githubRepoUrl}/commit/${githubCommitRef}` : `${githubRepoUrl}/commits`
   const githubReleaseUrl = githubTagRef ? `${githubRepoUrl}/releases/tag/${githubTagRef}` : `${githubRepoUrl}/releases`
 
-  const backendId = backendCanisterId || (isBackendAuditLoading ? t.audit.loading : "No disponible")
+  const embeddedMainnetBackendId = (import.meta.env.VITE_BACKEND_CANISTER_ID_IC as string || "").trim()
+  const backendId =
+    (backendAuditData?.canisterId || "").trim() ||
+    embeddedMainnetBackendId ||
+    backendCanisterId ||
+    (isBackendAuditLoading ? t.audit.loading : "No disponible")
   const frontendId = frontendCanisterId || (isFrontendHashLoading ? t.audit.loading : "No disponible")
 
   const verifyTexts = t.audit.verify
