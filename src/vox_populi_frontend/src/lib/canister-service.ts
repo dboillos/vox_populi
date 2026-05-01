@@ -99,7 +99,17 @@ interface BackendActor {
   }>
 }
 
-const CANISTER_ID = generatedCanisterId || import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND || ""
+const embeddedBackendCanisterId = (
+  import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND ||
+  import.meta.env.VITE_BACKEND_CANISTER_ID_IC ||
+  ""
+).trim()
+
+const generatedBackendCanisterId = (generatedCanisterId || "").trim()
+
+// En producción priorizamos el ID embebido por Vite para evitar arrastrar IDs locales
+// inyectados por declaraciones generadas en tiempo de build.
+const CANISTER_ID = embeddedBackendCanisterId || generatedBackendCanisterId
 
 function resolveLocalHost() {
   return import.meta.env.VITE_IC_HOST || "http://localhost:4943"

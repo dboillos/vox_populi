@@ -68,6 +68,8 @@ export default defineConfig({
     // DFX_NETWORK fijado a "ic" para que la declaración generada por dfx
     // no llame fetchRootKey() al cargar el módulo en producción.
     'process.env.DFX_NETWORK': JSON.stringify('ic'),
+    'process.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(mainnetBackendCanisterId),
+    'process.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(mainnetFrontendCanisterId),
     'import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(mainnetBackendCanisterId),
     'import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(mainnetFrontendCanisterId),
     'import.meta.env.VITE_GITHUB_RELEASE_TAG': JSON.stringify(githubReleaseTag),
