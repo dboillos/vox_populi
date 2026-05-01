@@ -1,6 +1,7 @@
 import { Principal } from "@icp-sdk/core/principal"
+import { Actor, HttpAgent } from "@icp-sdk/core/agent"
 import { createActor as createBackendActor, canisterId as generatedCanisterId } from "declarations/vox_populi_backend"
-import { createActor as createFrontendAssetActor } from "declarations/vox_populi_frontend"
+import { idlFactory as frontendIdlFactory } from "../../../declarations/vox_populi_frontend/vox_populi_frontend.did.js"
 
 export interface AnswerSelection {
   questionId: number
@@ -241,12 +242,23 @@ async function getFrontendAssetActor(frontendCanisterId: string, options: Fronte
   }
 
   const actorPromise = Promise.resolve(
-    createFrontendAssetActor(normalizedCanisterId, {
-      agentOptions: {
+    (() => {
+      const agent = new HttpAgent({
         host: targetHost,
         verifyQuerySignatures: !IS_LOCAL_RUNTIME,
-      },
-    }) as unknown as FrontendAssetActor,
+      })
+
+      if (targetHost !== "https://ic0.app") {
+        void agent.fetchRootKey().catch(() => {
+          // En local puede fallar temporalmente durante arranque de réplica.
+        })
+      }
+
+      return Actor.createActor(frontendIdlFactory as unknown as any, {
+        agent,
+        canisterId: normalizedCanisterId,
+      }) as unknown as FrontendAssetActor
+    })(),
   ).catch((error) => {
     frontendAssetActorCache.delete(cacheKey)
     throw error
