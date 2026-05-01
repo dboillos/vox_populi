@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { ArrowLeft, ExternalLink, Hash, Cpu, Copy, Check } from "lucide-react"
+import { ArrowLeft, ExternalLink, Hash, Cpu, Copy, Check, AlertCircle } from "lucide-react"
 
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
@@ -9,6 +9,7 @@ import { useLocale } from "../../lib/locale-context"
 import { InfoTerm } from "../../components/layout/info-term"
 import { Principal } from "@icp-sdk/core/principal"
 import { canisterService } from "../../lib/canister-service"
+import { FRONTEND_ASSETS_MAINNET } from "../../lib/i18n"
 import { canisterId as backendCanisterId } from "declarations/vox_populi_backend"
 
 const frontendCanisterId = (import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND as string || "").trim()
@@ -137,13 +138,15 @@ export function AuditPage({ onBack }: AuditPageProps) {
       title: verifyTexts.step2,
       description: verifyTexts.step2Desc,
       command: verifyTexts.step2CommandTemplate
-        .replace("{repoUrl}", githubRepoUrl)
-        .replace("{releaseTag}", githubReleaseDisplay),
+        .replaceAll("{repoUrl}", githubRepoUrl)
+        .replaceAll("{releaseTag}", githubReleaseDisplay),
     },
     {
       title: verifyTexts.step3,
       description: verifyTexts.step3Desc,
-      command: verifyTexts.step3Command,
+      command: verifyTexts.step3Command
+        .replaceAll("{repoUrl}", githubRepoUrl)
+        .replaceAll("{releaseTag}", githubReleaseDisplay),
     },
   ]
 
@@ -253,6 +256,38 @@ export function AuditPage({ onBack }: AuditPageProps) {
                   <p className="text-sm text-muted-foreground break-all">
                     <span className="font-medium text-foreground">{t.audit.onChainModuleHashLabel}:</span> {row.moduleHash}
                   </p>
+                  {row.key === 'frontend' && (
+                    <div className="mt-4 pt-4 border-t border-border space-y-3">
+                      <div className="flex gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-muted-foreground leading-relaxed">
+                          {t.audit.moduleHashNote}
+                        </p>
+                      </div>
+                      <div className="mt-3 pt-3 border-t border-border space-y-2">
+                        <p className="text-xs font-semibold text-foreground">{t.audit.frontendAssetsLabel}</p>
+                        <p className="text-xs text-muted-foreground">{t.audit.frontendAssetsDesc}</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-border/50">
+                                <th className="text-left py-2 px-2 font-semibold text-foreground">{t.audit.assetFileLabel}</th>
+                                <th className="text-left py-2 px-2 font-semibold text-foreground">{t.audit.assetHashLabel}</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/50">
+                              {FRONTEND_ASSETS_MAINNET.map((asset) => (
+                                <tr key={asset.file} className="hover:bg-muted/30 transition-colors">
+                                  <td className="py-1.5 px-2 text-muted-foreground font-mono text-xs break-all">{asset.file}</td>
+                                  <td className="py-1.5 px-2 text-muted-foreground font-mono text-xs break-all">{asset.hash}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </CardContent>

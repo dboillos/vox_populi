@@ -1,5 +1,5 @@
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { X, Mail, Shield, CheckCircle2 } from "lucide-react"
 
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 
 // Lógica y Contexto (Carpeta src/lib)
 import { useLocale } from "@/lib/locale-context"
-import { LoginError, type LoginIdentity, loginWithGoogle } from "@/lib/login"
+import { LoginError, type LoginIdentity, loginWithGoogle, preloadGoogleSdk } from "@/lib/login"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -21,6 +21,14 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (!isOpen) {
+      return
+    }
+
+    void preloadGoogleSdk()
+  }, [isOpen])
+
   const handleGoogleLogin = async () => {
     setIsLoading(true)
     setAuthError(null)
@@ -31,6 +39,8 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     } catch (error) {
       if (error instanceof LoginError && error.code === "domain_not_allowed") {
         setAuthError(t.login.domainError)
+      } else if (error instanceof LoginError && error.code === "google_auth_failed") {
+        setAuthError(error.message)
       } else {
         setAuthError(t.login.accessDeniedDescription)
       }

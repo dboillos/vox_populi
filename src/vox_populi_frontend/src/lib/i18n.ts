@@ -5,6 +5,15 @@
 // Idiomas disponibles: Castellano (es), English (en), Català (ca)
 // ============================================================================
 
+// Frontend assets hashes from mainnet (verified via verify.sh v1.2.106)
+export const FRONTEND_ASSETS_MAINNET = [
+  { file: "index.html", hash: "a485f1f458f1cef92532b430442d74330cb6ab2110e3d2d76f40f5a088462c47" },
+  { file: "assets/index-b8500bfc.css", hash: "b8500bfc0f80892f0e37c8908cc6d9777049045eb80198426e7a15c8efbdd012" },
+  { file: "assets/index-d6970189.js", hash: "4f240015b536cfe5bc4c25d6f75ba8f4467ad8e8c5d47d45aaa28bbfd5e37e7c" },
+  { file: "favicon.ico", hash: "4e8d31b50ffb59695389d94e393d299c5693405a12f6ccd08c31bcf9b58db2d4" },
+  { file: "logo2.svg", hash: "037eb7ae523403daa588cf4f47a34c56a3f5de08a5a2dd2364839e45f14f4b8b" },
+]
+
 export type Locale = "es" | "en" | "ca"
 
 export const localeNames: Record<Locale, string> = {
@@ -100,6 +109,11 @@ export interface Translations {
     canisterIdLabel: string
     onChainModuleHashLabel: string
     runningAppVersionLabel: string
+    moduleHashNote: string
+    frontendAssetsLabel: string
+    frontendAssetsDesc: string
+    assetFileLabel: string
+    assetHashLabel: string
     githubTagLabel: string
     githubReleaseLabel: string
     githubCommitLabel: string
@@ -286,26 +300,31 @@ survey: {
       canisterIdLabel: "Canister ID",
       onChainModuleHashLabel: "On-chain module hash",
       runningAppVersionLabel: "Version actual de la app en ejecucion",
+      moduleHashNote: "Nota técnica: El module_hash es el SHA-256 del contenedor WebAssembly general que actúa como servidor HTTP. NO es el hash de los assets individuales (HTML, CSS, JS). Para verificar la integridad de esos assets, verify.sh compara archivo-a-archivo contra la lista certificada on-chain (usando el mismo algoritmo SHA-256, encoding identity).",
+      frontendAssetsLabel: "Hashes de Assets del Frontend (Mainnet)",
+      frontendAssetsDesc: "Hashes verificados de los archivos principales desplegados en mainnet. Puedes comparar estos valores localmente con tu copia del repositorio.",
+      assetFileLabel: "Archivo",
+      assetHashLabel: "SHA-256 (Mainnet)",
       githubTagLabel: "Tag de GitHub",
       githubReleaseLabel: "Release de GitHub",
       githubCommitLabel: "Commit de GitHub",
       verify: {
         title: "Como Verificar",
-        intro: "Prepara entorno, compila en local y compara contra los hashes on-chain que se muestran arriba.",
-        step1: "Preparar entorno (Git + DFX)",
-        step1Desc: "Instala Git y DFX para tu sistema operativo y valida que ambos comandos funcionen.",
-        step1Command: "# Instala Git y DFX segun tu sistema operativo:\n# Git: https://git-scm.com/downloads\n# DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/\n\ngit --version\ndfx --version",
-        step2: "Clonar repositorio oficial y fijar version",
-        step2Desc: "Clona el repositorio y cambia al tag/commit que quieres auditar.",
+        intro: "Verifica que el release de GitHub coincide con lo que ejecuta la red.",
+        step1: "Prerequisitos del auditor",
+        step1Desc: "Necesitas Git, GitHub CLI, jq, tar y una CLI de ICP (icp recomendado; dfx como fallback). Verificado oficialmente en Linux/macOS. La variante PowerShell se incluye como referencia y no esta probada oficialmente.",
+        step1Command: "# Herramientas minimas\ngit --version\ngh --version\njq --version\ntar --version\n\n# CLI ICP (preferida) o DFX (fallback)\nicp --version || dfx --version\n\n# Autenticacion GitHub para descargar artefactos\ngh auth status",
+        step2: "Fijar codigo fuente a la referencia auditada",
+        step2Desc: "Clona el repositorio oficial y sitúate exactamente en el tag/release mostrado arriba. Asi auditas la misma referencia publicada en GitHub.",
         step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
-        step3: "Compilar local y comparar hashes",
-        step3Desc: "Calcula SHA-256 local del WASM backend/frontend y comparalo con los hashes on-chain de esta tabla.",
-        step3Command: "dfx build\nshasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm\nshasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm\n\n# Compara estos 2 hashes con los que aparecen en la tabla 'Canisters y Hashes'",
+        step3: "Ejecutar verify.sh",
+        step3Desc: "verify.sh descarga artefactos forenses del release (backend.wasm + frontend-dist), compara backend vs module_hash on-chain y frontend archivo-a-archivo contra list() del asset canister (mainnet).",
+        step3Command: "# Linux/macOS (probado)\n./audit/verify.sh {releaseTag}\n\n# Esperado: backend COINCIDE y frontend sin NO_COINCIDE/FALTA_EN_MAINNET\n\n# PowerShell (referencia, no probado oficialmente)\n# Opcion 1: usando Git Bash en PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Opcion 2: usando WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
         copy: "Copiar",
         copied: "Copiado",
         repo: "Repositorio fuente",
         release: "Referencia de release",
-        controllersNote: "Nota: si usas dfx canister status en IC, necesitas permisos de controller. Esta pantalla ya expone hashes on-chain via backend de auditoria.",
+        controllersNote: "Nota: verify.sh evita sesgos de compilacion local porque toma artefactos directamente desde GitHub Releases. Esto facilita una auditoria reproducible entre terceros.",
         moduleHashUnavailable: "No legible directamente desde este cliente (requiere canister_status por un controller)",
       }
     },
@@ -457,26 +476,31 @@ survey: {
       canisterIdLabel: "Canister ID",
       onChainModuleHashLabel: "On-chain module hash",
       runningAppVersionLabel: "Current running app version",
+      moduleHashNote: "Technical note: The module_hash is the SHA-256 of the general WebAssembly container that acts as an HTTP server. It is NOT the hash of individual assets (HTML, CSS, JS). To verify asset integrity, verify.sh compares file-by-file against the certified on-chain list using the same SHA-256 algorithm (identity encoding).",
+      frontendAssetsLabel: "Frontend Asset Hashes (Mainnet)",
+      frontendAssetsDesc: "Verified hashes of the main files deployed on mainnet. You can compare these values locally with your copy of the repository.",
+      assetFileLabel: "File",
+      assetHashLabel: "SHA-256 (Mainnet)",
       githubTagLabel: "GitHub tag",
       githubReleaseLabel: "GitHub release",
       githubCommitLabel: "GitHub commit",
       verify: {
         title: "How To Verify",
-        intro: "Prepare your environment, build locally, and compare against the on-chain hashes shown above.",
-        step1: "Prepare environment (Git + DFX)",
-        step1Desc: "Install Git and DFX for your OS, then verify both tools are available.",
-        step1Command: "# Install Git and DFX for your operating system:\n# Git: https://git-scm.com/downloads\n# DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/\n\ngit --version\ndfx --version",
-        step2: "Clone official repository and pin version",
-        step2Desc: "Clone the repository and checkout the tag/commit you want to audit.",
+        intro: "Forensic verification guide (verify only). Mainnet deployment is handled by the development team; independent auditors focus on checking that GitHub release artifacts match what runs on-chain.",
+        step1: "Auditor prerequisites",
+        step1Desc: "You need Git, GitHub CLI, jq, tar, and an ICP CLI (icp preferred; dfx fallback). Officially tested on Linux/macOS. PowerShell commands are included as reference and are not officially tested.",
+        step1Command: "# Minimum tooling\ngit --version\ngh --version\njq --version\ntar --version\n\n# ICP CLI (preferred) or DFX (fallback)\nicp --version || dfx --version\n\n# GitHub auth for downloading release artifacts\ngh auth status",
+        step2: "Pin source code to audited reference",
+        step2Desc: "Clone the official repository and checkout the exact tag/release shown above. This ensures you audit the same published reference.",
         step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
-        step3: "Build locally and compare hashes",
-        step3Desc: "Compute local SHA-256 for backend/frontend WASM and compare with the on-chain hashes in this table.",
-        step3Command: "dfx build\nshasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm\nshasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm\n\n# Compare these 2 hashes against the values shown in the 'Canisters and Hashes' table",
+        step3: "Run verify.sh (no deploy)",
+        step3Desc: "verify.sh downloads forensic release artifacts (backend.wasm + frontend-dist), compares backend vs on-chain module_hash, and checks frontend file-by-file against asset canister list() on mainnet.",
+        step3Command: "# Linux/macOS (tested)\n./audit/verify.sh {releaseTag}\n\n# Expected: backend MATCH and frontend with no NO_COINCIDE/FALTA_EN_MAINNET rows\n\n# PowerShell (reference, not officially tested)\n# Option 1: Git Bash available in PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Option 2: via WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
         copy: "Copy",
         copied: "Copied",
         repo: "Source repository",
         release: "Release reference",
-        controllersNote: "Note: if you use dfx canister status on IC, controller permissions are required. This page exposes on-chain hashes through the audit backend.",
+        controllersNote: "Note: verify.sh avoids local-build bias by consuming artifacts directly from GitHub Releases, which improves reproducibility for third-party audits.",
         moduleHashUnavailable: "Not directly readable from this client (requires canister_status by a controller)",
       }
     },
@@ -628,26 +652,31 @@ survey: {
       canisterIdLabel: "Canister ID",
       onChainModuleHashLabel: "On-chain module hash",
       runningAppVersionLabel: "Versio actual de l'app en execucio",
+      moduleHashNote: "Nota tècnica: El module_hash és el SHA-256 del contenidor WebAssembly general que actua com a servidor HTTP. NO és el hash dels assets individuals (HTML, CSS, JS). Per verificar la integritat d'aquests assets, verify.sh compara fitxer-a-fitxer contra la llista certificada on-chain usant el mateix algoritme SHA-256 (encoding identity).",
+      frontendAssetsLabel: "Hashes d'Assets del Frontend (Mainnet)",
+      frontendAssetsDesc: "Hashes verificats dels fitxers principals desplegats a mainnet. Pots comparar aquests valors localment amb la teva còpia del repositori.",
+      assetFileLabel: "Fitxer",
+      assetHashLabel: "SHA-256 (Mainnet)",
       githubTagLabel: "Tag de GitHub",
       githubReleaseLabel: "Release de GitHub",
       githubCommitLabel: "Commit de GitHub",
       verify: {
         title: "Com Verificar",
-        intro: "Prepara l'entorn, compila en local i compara amb els hashes on-chain mostrats a dalt.",
-        step1: "Preparar entorn (Git + DFX)",
-        step1Desc: "Instal.la Git i DFX per al teu sistema operatiu i valida les versions.",
-        step1Command: "# Instal.la Git i DFX segons el teu sistema operatiu:\n# Git: https://git-scm.com/downloads\n# DFX: https://internetcomputer.org/docs/current/developer-docs/getting-started/install/\n\ngit --version\ndfx --version",
-        step2: "Clonar el repositori oficial i fixar versio",
-        step2Desc: "Clona el repositori i canvia al tag/commit que vols auditar.",
+        intro: "Guia de verificacio forense (nomes verify). El desplegament a mainnet el fa l'equip de desenvolupament; l'auditoria independent se centra a validar que el release de GitHub coincideix amb el que s'executa on-chain.",
+        step1: "Prerequisits de l'auditor",
+        step1Desc: "Necessites Git, GitHub CLI, jq, tar i una CLI d'ICP (icp recomanat; dfx com a fallback). Provat oficialment a Linux/macOS. Els comandos de PowerShell s'inclouen com a referencia i no estan provats oficialment.",
+        step1Command: "# Eines minimes\ngit --version\ngh --version\njq --version\ntar --version\n\n# CLI ICP (recomanada) o DFX (fallback)\nicp --version || dfx --version\n\n# Autenticacio GitHub per descarregar artefactes\ngh auth status",
+        step2: "Fixar codi font a la referencia auditada",
+        step2Desc: "Clona el repositori oficial i canvia exactament al tag/release mostrat a dalt. Aixi audites la mateixa referencia publicada.",
         step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
-        step3: "Compilar en local i comparar hashes",
-        step3Desc: "Calcula el SHA-256 local del WASM backend/frontend i compara'l amb els hashes on-chain d'aquesta taula.",
-        step3Command: "dfx build\nshasum -a 256 .dfx/local/canisters/vox_populi_backend/vox_populi_backend.wasm\nshasum -a 256 .dfx/local/canisters/vox_populi_frontend/vox_populi_frontend.wasm\n\n# Compara aquests 2 hashes amb els valors de la taula 'Canisters i Hashes'",
+        step3: "Executar verify.sh (sense deploy)",
+        step3Desc: "verify.sh descarrega artefactes forenses del release (backend.wasm + frontend-dist), compara backend vs module_hash on-chain i valida frontend fitxer-a-fitxer contra list() de l'asset canister a mainnet.",
+        step3Command: "# Linux/macOS (provat)\n./audit/verify.sh {releaseTag}\n\n# Esperat: backend COINCIDE i frontend sense files NO_COINCIDE/FALTA_EN_MAINNET\n\n# PowerShell (referencia, no provat oficialment)\n# Opcio 1: amb Git Bash al PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Opcio 2: amb WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
         copy: "Copiar",
         copied: "Copiat",
         repo: "Repositori font",
         release: "Referencia de release",
-        controllersNote: "Nota: si fas servir dfx canister status a IC, calen permisos de controller. Aquesta pagina exposa hashes on-chain via el backend d'auditoria.",
+        controllersNote: "Nota: verify.sh evita biaixos de compilacio local perque consumeix artefactes directament de GitHub Releases, millorant la reproduibilitat de l'auditoria externa.",
         moduleHashUnavailable: "No llegible directament des d'aquest client (requereix canister_status per un controller)",
       }
     },

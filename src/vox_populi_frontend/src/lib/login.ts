@@ -34,6 +34,8 @@ type GoogleCredentialResponse = {
 type GooglePromptNotification = {
   isNotDisplayed?: () => boolean
   isSkippedMoment?: () => boolean
+  getNotDisplayedReason?: () => string
+  getSkippedReason?: () => string
 }
 
 declare global {
@@ -43,8 +45,12 @@ declare global {
         id?: {
           initialize: (config: {
             client_id: string
+            auto_select?: boolean
+            itp_support?: boolean
+            use_fedcm_for_prompt?: boolean
             callback: (response: GoogleCredentialResponse) => void
           }) => void
+          disableAutoSelect: () => void
           prompt: (callback?: (notification: GooglePromptNotification) => void) => void
         }
       }
@@ -71,12 +77,35 @@ function loadGoogleSdk(): Promise<void> {
   sdkLoadPromise = new Promise((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[src=\"${GOOGLE_GSI_SRC}\"]`)
     if (existing) {
+      if (window.google?.accounts?.id) {
+        resolve()
+        return
+      }
+
       existing.addEventListener("load", () => resolve(), { once: true })
       existing.addEventListener(
         "error",
         () => reject(new LoginError("sdk_load_failed", "No se pudo cargar Google Identity Services")),
         { once: true },
       )
+
+      const startedAt = Date.now()
+      const maxWaitMs = 10000
+      const poll = () => {
+        if (window.google?.accounts?.id) {
+          resolve()
+          return
+        }
+
+        if (Date.now() - startedAt > maxWaitMs) {
+          reject(new LoginError("sdk_load_failed", "Timeout al inicializar Google Identity Services"))
+          return
+        }
+
+        window.setTimeout(poll, 50)
+      }
+
+      poll()
       return
     }
 
@@ -90,6 +119,14 @@ function loadGoogleSdk(): Promise<void> {
   })
 
   return sdkLoadPromise
+}
+
+export async function preloadGoogleSdk(): Promise<void> {
+  try {
+    await loadGoogleSdk()
+  } catch {
+    // No interrumpir la UX por precarga: el flujo principal reintentará y mostrará error si falla.
+  }
 }
 
 function normalizeEmail(email: string): string {
@@ -121,6 +158,9 @@ function requestGoogleIdToken(): Promise<string> {
 
     googleId.initialize({
       client_id: GOOGLE_CLIENT_ID,
+      auto_select: false,
+      itp_support: true,
+      use_fedcm_for_prompt: true,
       // callback de Google con el id_token JWT (credential).
       callback: (response) => {
         if (!response.credential) {
@@ -132,10 +172,14 @@ function requestGoogleIdToken(): Promise<string> {
       },
     })
 
+    // Evita que Google seleccione automáticamente la sesión previa y favorece la UI de selección.
+    googleId.disableAutoSelect()
+
     googleId.prompt((notification) => {
       // Captura casos típicos de bloqueo por popup/políticas del navegador.
       if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
-        finish(() => reject(new LoginError("google_auth_failed", "No se pudo completar el popup de Google")))
+        const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || "motivo desconocido"
+        finish(() => reject(new LoginError("google_auth_failed", `No se pudo abrir el selector de Google (${reason})`)))
       }
     })
 

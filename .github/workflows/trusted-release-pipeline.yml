@@ -38,12 +38,80 @@ jobs:
             exit 3
           fi
 
+      - name: 📊 Mostrar hashes criptográficos para auditoría
+        run: |
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════════════════════════╗"
+          echo "║                 🔐 HASHES CRIPTOGRÁFICOS DE CONSTRUCCIÓN CONFIABLE            ║"
+          echo "║                          (Trusted Build Artifacts)                            ║"
+          echo "╚════════════════════════════════════════════════════════════════════════════════╝"
+          echo ""
+          
+          # Backend Wasm Hash
+          echo "📦 BACKEND WASM"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          if [ -f backend.wasm ]; then
+            BACKEND_HASH=$(sha256sum backend.wasm | awk '{print $1}')
+            echo "Archivo: backend.wasm"
+            echo "SHA-256: $BACKEND_HASH"
+          else
+            echo "⚠️  backend.wasm no encontrado"
+          fi
+          echo ""
+          
+          # Frontend Assets Hashes
+          echo "🎨 FRONTEND ASSETS"
+          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          
+          # Extraer el tar para acceder a los archivos
+          TEMP_EXTRACT=$(mktemp -d)
+          tar -xzf frontend-dist.tgz -C "$TEMP_EXTRACT" 2>/dev/null || true
+          
+          # Definir archivos a mostrar
+          ASSETS=(
+            "index.html"
+            "assets/index-*.css"
+            "assets/index-*.js"
+            "favicon.ico"
+            "logo2.svg"
+          )
+          
+          for pattern in "${ASSETS[@]}"; do
+            # Usar find para manejar wildcards en los nombres
+            if [[ "$pattern" == *"*"* ]]; then
+              files=$(find "$TEMP_EXTRACT" -name "$(basename "$pattern")" 2>/dev/null | sort)
+            else
+              files="$TEMP_EXTRACT/$pattern"
+            fi
+            
+            for file in $files; do
+              if [ -f "$file" ]; then
+                relative_path="${file#$TEMP_EXTRACT/}"
+                file_hash=$(sha256sum "$file" | awk '{print $1}')
+                echo "✓ $relative_path"
+                echo "  $file_hash"
+              fi
+            done
+          done
+          
+          rm -rf "$TEMP_EXTRACT"
+          
+          echo ""
+          echo "╔════════════════════════════════════════════════════════════════════════════════╗"
+          echo "║  ✅ Los auditorios pueden verificar estos hashes localmente con:               ║"
+          echo "║     sha256sum backend.wasm                                                    ║"
+          echo "║     sha256sum assets/index-*.css assets/index-*.js favicon.ico index.html     ║"
+          echo "║                                                                                ║"
+          echo "║  📍 Para auditoría reproducible, usar: ./audit/verify.sh ${{ github.ref_name }}║"
+          echo "╚════════════════════════════════════════════════════════════════════════════════╝"
+          echo ""
+
       - name: Loguear el SHA256 del Wasm resultante
         run: |
           if [ -f backend.wasm ]; then
-            echo "Calculando Hash criptográfico para validación forense..."
-            SHA_HASH=$(sha256sum backend.wasm)
-            echo "SHA256 del Wasm resultante: $SHA_HASH"
+            echo "✅ Validación de construcción completada correctamente"
+            echo ""
+            echo "Todos los hashes se han mostrado arriba en la sección 🔐 HASHES CRIPTOGRÁFICOS"
           else
             echo "Error: backend.wasm no encontrado"
             exit 2
