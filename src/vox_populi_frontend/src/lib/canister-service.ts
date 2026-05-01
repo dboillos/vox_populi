@@ -1,7 +1,6 @@
 import { Principal } from "@icp-sdk/core/principal"
 import { Actor, HttpAgent } from "@icp-sdk/core/agent"
 import { createActor as createBackendActor, canisterId as generatedCanisterId } from "declarations/vox_populi_backend"
-import { idlFactory as frontendIdlFactory } from "../../../declarations/vox_populi_frontend/vox_populi_frontend.did.js"
 
 export interface AnswerSelection {
   questionId: number
@@ -110,17 +109,37 @@ interface FrontendAssetEncoding {
   modified: bigint
   sha256: [] | [Uint8Array | number[]]
   length: bigint
-  content_encoding: string
 }
 
 interface FrontendAssetListEntry {
   key: string
-  encodings: FrontendAssetEncoding[]
+  encodings: Array<[string, FrontendAssetEncoding]>
   content_type: string
 }
 
 interface FrontendAssetActor {
-  list: (args: { start: [] | [bigint]; length: [] | [bigint] }) => Promise<FrontendAssetListEntry[]>
+  list_permitted: () => Promise<FrontendAssetListEntry[]>
+}
+
+const frontendAssetsIdlFactory: any = ({ IDL }: any) => {
+  const AssetEncodingDetails = IDL.Record({
+    certified: IDL.Bool,
+    hash: IDL.Vec(IDL.Nat8),
+    length: IDL.Nat,
+    modified: IDL.Int,
+    sha256: IDL.Opt(IDL.Vec(IDL.Nat8)),
+  })
+
+  const AssetDetailsResult = IDL.Record({
+    key: IDL.Text,
+    content_type: IDL.Text,
+    encodings: IDL.Vec(IDL.Tuple(IDL.Text, AssetEncodingDetails)),
+  })
+
+  return IDL.Service({
+    // list_permitted expone la metadata y hashes SHA-256 por encoding.
+    list_permitted: IDL.Func([], [IDL.Vec(AssetDetailsResult)], ["query"]),
+  })
 }
 
 interface FrontendAssetActorOptions {
@@ -254,7 +273,7 @@ async function getFrontendAssetActor(frontendCanisterId: string, options: Fronte
         })
       }
 
-      return Actor.createActor(frontendIdlFactory as unknown as any, {
+      return Actor.createActor(frontendAssetsIdlFactory, {
         agent,
         canisterId: normalizedCanisterId,
       }) as unknown as FrontendAssetActor
@@ -385,18 +404,18 @@ export const canisterService = {
 
   async getFrontendAssetHashes(frontendCanisterId: string, options: FrontendAssetActorOptions = {}): Promise<FrontendAssetHashEntry[]> {
     const actor = await getFrontendAssetActor(frontendCanisterId, options)
-    const entries = await actor.list({ start: [], length: [] })
+    const entries = await actor.list_permitted()
 
     return entries
       .map((entry) => {
-        const identityEncoding = entry.encodings.find((encoding) => encoding.content_encoding === "identity")
-        if (!identityEncoding || identityEncoding.sha256.length === 0) {
+        const identityEncoding = entry.encodings.find(([name]) => name === "identity")
+        if (!identityEncoding || identityEncoding[1].sha256.length === 0) {
           return null
         }
 
         return {
           file: entry.key.startsWith("/") ? entry.key.slice(1) : entry.key,
-          hash: bytesToHex(identityEncoding.sha256[0]),
+          hash: bytesToHex(identityEncoding[1].sha256[0]),
         }
       })
       .filter((entry): entry is FrontendAssetHashEntry => entry !== null)
