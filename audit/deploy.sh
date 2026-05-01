@@ -339,42 +339,97 @@ download_release_artifacts() {
 
 BACKEND_WASM=""
 FRONTEND_DIST=""
+FORCE_REINSTALL=0
 
-if [ "$#" -ge 2 ] && [ "$1" = "--tag" ]; then
-  RELEASE_TAG="$2"
-  echo "[deploy] Descargando artefactos del release: $RELEASE_TAG"
-  download_release_artifacts "$RELEASE_TAG"
-elif [ "$#" -ge 1 ] && [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  RELEASE_TAG="$1"
-  echo "[deploy] Descargando artefactos del release: $RELEASE_TAG"
-  download_release_artifacts "$RELEASE_TAG"
-else
-  if [ "$#" -ge 1 ]; then
-    BACKEND_WASM="$1"
-  else
-    if [ -f "./audit_artifacts/backend.wasm" ]; then
-      BACKEND_WASM="./audit_artifacts/backend.wasm"
-    elif [ -f "./audit_artifacts/backend-wasm/backend.wasm" ]; then
-      BACKEND_WASM="./audit_artifacts/backend-wasm/backend.wasm"
-    else
-      echo "Uso: $0 [--tag TAG] [RUTA_BACKEND_WASM [RUTA_FRONTEND_DIST]]" >&2
-      echo "Sugerencia: ejecuta antes ./audit/build.sh <TAG> para descargar artefactos." >&2
+# Parsear parámetros
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --tag)
+      RELEASE_TAG="$2"
+      echo "[deploy] Descargando artefactos del release: $RELEASE_TAG"
+      download_release_artifacts "$RELEASE_TAG"
+      shift 2
+      ;;
+    --reinstall)
+      FORCE_REINSTALL=1
+      print_warn "Modo --reinstall activado: el estado del backend será eliminado"
+      shift
+      ;;
+    --tag-and-reinstall)
+      RELEASE_TAG="$2"
+      FORCE_REINSTALL=1
+      echo "[deploy] Descargando artefactos del release: $RELEASE_TAG"
+      download_release_artifacts "$RELEASE_TAG"
+      print_warn "Modo --reinstall activado: el estado del backend será eliminado"
+      shift 2
+      ;;
+    -v[0-9]*)
+      # Parámetro que comienza con -v pero no es un flag conocido
+      echo "Error: parámetro no reconocido: $1" >&2
       exit 2
-    fi
+      ;;
+    v[0-9.]*)
+      # Parámetro que parece un tag pero no comienza con guión
+      if [[ "$1" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        RELEASE_TAG="$1"
+        echo "[deploy] Descargando artefactos del release: $RELEASE_TAG"
+        download_release_artifacts "$RELEASE_TAG"
+        shift
+      else
+        # Es un archivo local
+        if [ -z "$BACKEND_WASM" ]; then
+          BACKEND_WASM="$1"
+        elif [ -z "$FRONTEND_DIST" ]; then
+          FRONTEND_DIST="$1"
+        else
+          echo "Error: demasiados parámetros" >&2
+          exit 2
+        fi
+        shift
+      fi
+      ;;
+    *)
+      # Archivo local
+      if [ -z "$BACKEND_WASM" ]; then
+        BACKEND_WASM="$1"
+      elif [ -z "$FRONTEND_DIST" ]; then
+        FRONTEND_DIST="$1"
+      else
+        echo "Error: demasiados parámetros" >&2
+        exit 2
+      fi
+      shift
+      ;;
+  esac
+done
+
+# Si no se proporciona un tag de release, buscar archivos locales
+if [ -z "$BACKEND_WASM" ]; then
+  if [ -f "./audit_artifacts/backend.wasm" ]; then
+    BACKEND_WASM="./audit_artifacts/backend.wasm"
+  elif [ -f "./audit_artifacts/backend-wasm/backend.wasm" ]; then
+    BACKEND_WASM="./audit_artifacts/backend-wasm/backend.wasm"
+  else
+    echo "Uso: $0 [--tag TAG] [--reinstall] [RUTA_BACKEND_WASM [RUTA_FRONTEND_DIST]]" >&2
+    echo "Ejemplos:" >&2
+    echo "  $0 v1.2.105                              # Descargar release v1.2.105" >&2
+    echo "  $0 --tag v1.2.105                        # Descargar release v1.2.105 (explícito)" >&2
+    echo "  $0 --tag v1.2.105 --reinstall            # Descargar y reinstalar (sin estado previo)" >&2
+    echo "  $0 ./audit_artifacts/backend.wasm ./src/vox_populi_frontend/dist  # Archivos locales" >&2
+    echo "  $0 --reinstall ./audit_artifacts/backend.wasm ./src/vox_populi_frontend/dist" >&2
+    exit 2
   fi
+fi
 
-  if [ "$#" -ge 2 ]; then
-    FRONTEND_DIST="$2"
+if [ -z "$FRONTEND_DIST" ]; then
+  if [ -d "./audit_artifacts/frontend-dist" ]; then
+    FRONTEND_DIST="./audit_artifacts/frontend-dist"
+  elif [ -d "./src/vox_populi_frontend/dist" ]; then
+    FRONTEND_DIST="./src/vox_populi_frontend/dist"
   else
-    if [ -d "./audit_artifacts/frontend-dist" ]; then
-      FRONTEND_DIST="./audit_artifacts/frontend-dist"
-    elif [ -d "./src/vox_populi_frontend/dist" ]; then
-      FRONTEND_DIST="./src/vox_populi_frontend/dist"
-    else
-      echo "Uso: $0 [--tag TAG] [RUTA_BACKEND_WASM [RUTA_FRONTEND_DIST]]" >&2
-      echo "Sugerencia: ejecuta antes ./audit/build.sh <TAG> para descargar artefactos." >&2
-      exit 2
-    fi
+    echo "Uso: $0 [--tag TAG] [--reinstall] [RUTA_BACKEND_WASM [RUTA_FRONTEND_DIST]]" >&2
+    echo "Sugerencia: ejecuta antes ./audit/build.sh <TAG> para descargar artefactos." >&2
+    exit 2
   fi
 fi
 
@@ -430,58 +485,54 @@ fi
 print_section "1) Backend"
 print_kv "Wasm:" "$BACKEND_WASM"
 print_info "Instalando vox_populi_backend"
-set +e
-INSTALL_OUTPUT=$(install_backend upgrade 0 2>&1)
-RC=$?
-set -e
-if [ $RC -ne 0 ]; then
-  print_warn "La instalación del backend devolvió el código $RC."
-  printf '%s\n' "$INSTALL_OUTPUT"
-  # Detectar error de persistencia (IC0504) interactivo
-  if echo "$INSTALL_OUTPUT" | grep -q -E "IC0504|Missing upgrade option"; then
-    echo
-    echo "La actualización falló por una restricción de persistencia (IC0504)."
-    echo "Si elige 'reinstall' se perderá el estado almacenado."
-    
-    if [ ! -t 0 ]; then
-      echo "No hay terminal interactiva para confirmar 'reinstall'. Abortando para proteger el estado." >&2
+
+if [ "$FORCE_REINSTALL" -eq 1 ]; then
+  print_warn "⚠️  ATENCIÓN: Se ejecutará REINSTALL y se perderá TODO el estado almacenado en el backend"
+  echo ""
+  read -r -p "Escribe 'REINSTALL' para confirmar (sin comillas): " confirmation
+  
+  if [ "$confirmation" != "REINSTALL" ]; then
+    echo "Confirmación incorrecta. Abortando despliegue." >&2
+    exit 1
+  fi
+  
+  set +e
+  install_backend reinstall 1
+  RC=$?
+  set -e
+  if [ $RC -ne 0 ]; then
+    print_warn "Reinstall devolvió el código $RC, pero continuando..."
+  fi
+  print_ok "Backend reinstalado"
+else
+  set +e
+  INSTALL_OUTPUT=$(install_backend upgrade 0 2>&1)
+  RC=$?
+  set -e
+  if [ $RC -ne 0 ]; then
+    print_warn "La instalación del backend devolvió el código $RC."
+    printf '%s\n' "$INSTALL_OUTPUT"
+    # Detectar error de persistencia (IC0504) interactivo
+    if echo "$INSTALL_OUTPUT" | grep -q -E "IC0504|Missing upgrade option"; then
+      echo
+      echo "La actualización falló por una restricción de persistencia (IC0504)."
+      echo "Se requiere usar --reinstall para perder el estado almacenado."
+      echo ""
+      echo "Ejecuta con: $0 --reinstall [opciones]"
+      echo ""
       exit 1
-    fi
-
-    while true; do
-      read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
-      case "$yn" in
-        [Yy]*|[Nn]*|"") break ;;
-        *) echo "Respuesta no válida. Responde y (sí) o n (no)." ;;
-      esac
-    done
-
-    if echo "${yn:-n}" | grep -qi "^[Yy]"; then
-      echo "Ejecutando reinstall (se perderá el estado)..."
-      set +e
-      install_backend reinstall 0
-      RC2=$?
-      set -e
-      if [ $RC2 -ne 0 ]; then
-        echo "Reinstall falló con código $RC2. Abortando." >&2
-        exit $RC2
+    else
+      echo "Intentando despliegue alternativo..."
+      if command -v dfx >/dev/null 2>&1; then
+        dfx deploy --network ic --no-wallet || true
+      else
+        echo "No se ejecuta fallback de despliegue alternativo: dfx no está disponible." >&2
       fi
-      print_ok "Backend reinstalado correctamente"
-    else
-      echo "Abortando despliegue por elección del usuario." >&2
-      exit 1
-    fi
-  else
-    echo "Intentando despliegue alternativo..."
-    if command -v dfx >/dev/null 2>&1; then
-      dfx deploy --network ic --no-wallet || true
-    else
-      echo "No se ejecuta fallback de despliegue alternativo: dfx no está disponible." >&2
     fi
   fi
-fi
-if [ $RC -eq 0 ]; then
-  print_ok "Backend desplegado correctamente"
+  if [ $RC -eq 0 ]; then
+    print_ok "Backend desplegado correctamente"
+  fi
 fi
 
 print_section "2) Frontend"
