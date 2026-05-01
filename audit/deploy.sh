@@ -242,6 +242,8 @@ desired_keys = []
 def escape_blob(data: bytes) -> str:
     return ''.join(f'\\{byte:02x}' for byte in data)
 
+import gzip as gzip_mod
+
 for file_path in sorted(p for p in dist_dir.rglob('*') if p.is_file()):
     if file_path.name in {'.DS_Store', '.ic-assets.json5'} or file_path.name.endswith('.map'):
         continue
@@ -251,15 +253,31 @@ for file_path in sorted(p for p in dist_dir.rglob('*') if p.is_file()):
     content = file_path.read_bytes()
     sha = hashlib.sha256(content).digest()
     content_type = mimetypes.guess_type(file_path.name)[0] or 'application/octet-stream'
-    arg = (
+
+    # Encoding identity (siempre)
+    arg_identity = (
         f'(record {{ key = "{key}"; '
         f'content_type = "{content_type}"; '
         f'content_encoding = "identity"; '
         f'content = blob "{escape_blob(content)}"; '
         f'sha256 = opt blob "{escape_blob(sha)}"; }})\n'
     )
-    (tmp_dir / f'store_{len(desired_keys):04d}.didarg').write_text(arg, encoding='utf-8')
-    (tmp_dir / f'store_{len(desired_keys):04d}.key').write_text(key + '\n', encoding='utf-8')
+    slot = len(desired_keys)
+    (tmp_dir / f'store_{slot:04d}i.didarg').write_text(arg_identity, encoding='utf-8')
+    (tmp_dir / f'store_{slot:04d}i.key').write_text(key + '\n', encoding='utf-8')
+
+    # Encoding gzip (sobrescribe cualquier versión gzip previa en el canister)
+    gz_content = gzip_mod.compress(content, compresslevel=9, mtime=0)
+    gz_sha = hashlib.sha256(gz_content).digest()
+    arg_gzip = (
+        f'(record {{ key = "{key}"; '
+        f'content_type = "{content_type}"; '
+        f'content_encoding = "gzip"; '
+        f'content = blob "{escape_blob(gz_content)}"; '
+        f'sha256 = opt blob "{escape_blob(gz_sha)}"; }})\n'
+    )
+    (tmp_dir / f'store_{slot:04d}g.didarg').write_text(arg_gzip, encoding='utf-8')
+    (tmp_dir / f'store_{slot:04d}g.key').write_text(key + ' (gzip)\n', encoding='utf-8')
 
 stale_keys = sorted(onchain_keys - set(desired_keys))
 for index, key in enumerate(stale_keys, start=1):
@@ -276,7 +294,11 @@ PY
   while IFS= read -r arg_file; do
     asset_canister_call store "$arg_file"
     local key_file="${arg_file%.didarg}.key"
-    printf 'UPSERT\t%s\n' "$(cat "$key_file")" >> "$FRONTEND_SYNC_LOG"
+    key_label="$(cat "$key_file" | tr -d '\n')"
+    # Solo registrar la línea UPSERT para el encoding identity (no duplicar el log)
+    if [[ "$arg_file" == *i.didarg ]]; then
+      printf 'UPSERT\t%s\n' "${key_label% (gzip)}" >> "$FRONTEND_SYNC_LOG"
+    fi
   done < <(find "$tmp_dir" -name 'store_*.didarg' | LC_ALL=C sort)
 
   while IFS= read -r arg_file; do
@@ -421,27 +443,23 @@ if [ $RC -ne 0 ]; then
     echo "La actualización falló por una restricción de persistencia (IC0504)."
     echo "Si elige 'reinstall' se perderá el estado almacenado."
     
-    if [ "${AUTO_CONFIRM_REINSTALL:-0}" = "1" ]; then
-      yn="y"
-      echo "AUTO_CONFIRM_REINSTALL=1: confirmación automática de reinstall"
-    else
-      while true; do
-        read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
-        case "$yn" in
-          [Yy]*|[Nn]*|"") break ;;
-          *) echo "Respuesta no válida — responde y (sí) o n (no)." ;;
-        esac
-      done
+    if [ ! -t 0 ]; then
+      echo "No hay terminal interactiva para confirmar 'reinstall'. Abortando para proteger el estado." >&2
+      exit 1
     fi
+
+    while true; do
+      read -r -p "¿Deseas proceder con 'reinstall' y perder el estado? [y/N]: " yn
+      case "$yn" in
+        [Yy]*|[Nn]*|"") break ;;
+        *) echo "Respuesta no válida. Responde y (sí) o n (no)." ;;
+      esac
+    done
 
     if echo "${yn:-n}" | grep -qi "^[Yy]"; then
       echo "Ejecutando reinstall (se perderá el estado)..."
       set +e
-      if [ "${AUTO_CONFIRM_REINSTALL:-0}" = "1" ]; then
-        install_backend reinstall 1
-      else
-        install_backend reinstall 0
-      fi
+      install_backend reinstall 0
       RC2=$?
       set -e
       if [ $RC2 -ne 0 ]; then
