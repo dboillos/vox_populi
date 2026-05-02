@@ -328,7 +328,7 @@ function requestGoogleIdTokenWithMode(mode: GooglePromptMode, attemptId: number)
     timeoutId = window.setTimeout(() => {
       resetGooglePromptState()
       finish(() => reject(new LoginError("google_auth_failed", "Timeout al esperar respuesta de Google")))
-    }, 30000)
+    }, 60000)
   })
 }
 
