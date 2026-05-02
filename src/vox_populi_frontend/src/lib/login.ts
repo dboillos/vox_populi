@@ -38,6 +38,10 @@ type GooglePromptNotification = {
   getSkippedReason?: () => string
 }
 
+type GooglePromptMode = {
+  useFedCm: boolean
+}
+
 declare global {
   interface Window {
     google?: {
@@ -48,6 +52,7 @@ declare global {
             auto_select?: boolean
             itp_support?: boolean
             use_fedcm_for_prompt?: boolean
+            nonce?: string
             callback: (response: GoogleCredentialResponse) => void
           }) => void
           disableAutoSelect: () => void
@@ -60,6 +65,7 @@ declare global {
 }
 
 let sdkLoadPromise: Promise<void> | null = null
+let googleLoginAttemptCounter = 0
 
 function loadGoogleSdk(): Promise<void> {
   if (typeof window === "undefined") {
@@ -134,6 +140,20 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
+function isIosBrowser(): boolean {
+  if (typeof navigator === "undefined") {
+    return false
+  }
+
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent)
+}
+
+function normalizeGooglePromptReason(reason: string): string {
+  return reason
+    .trim()
+    .replace(/suprpressed_by_user/gi, "suppressed_by_user")
+}
+
 function resetGooglePromptState() {
   const googleId = window.google?.accounts?.id
   if (!googleId) {
@@ -142,6 +162,15 @@ function resetGooglePromptState() {
 
   googleId.cancel?.()
   googleId.disableAutoSelect()
+}
+
+function nextGoogleLoginAttemptId(): number {
+  googleLoginAttemptCounter += 1
+  return googleLoginAttemptCounter
+}
+
+function buildGoogleNonce(attemptId: number): string {
+  return `vox-login-${Date.now()}-${attemptId}`
 }
 
 function isAllowedDomain(email: string): boolean {
@@ -177,7 +206,7 @@ function formatBackendLoginError(error: unknown): LoginError {
   return new LoginError("backend_validation_failed", message || "Falló la validación del login en backend")
 }
 
-function requestGoogleIdToken(): Promise<string> {
+function requestGoogleIdTokenWithMode(mode: GooglePromptMode, attemptId: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const googleId = window.google?.accounts?.id
     if (!googleId) {
@@ -206,7 +235,8 @@ function requestGoogleIdToken(): Promise<string> {
       client_id: GOOGLE_CLIENT_ID,
       auto_select: false,
       itp_support: true,
-      use_fedcm_for_prompt: true,
+      use_fedcm_for_prompt: mode.useFedCm,
+      nonce: buildGoogleNonce(attemptId),
       // callback de Google con el id_token JWT (credential).
       callback: (response) => {
         if (!response.credential) {
@@ -218,14 +248,18 @@ function requestGoogleIdToken(): Promise<string> {
       },
     })
 
-    googleId.prompt((notification) => {
-      // Captura casos típicos de bloqueo por popup/políticas del navegador.
-      if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
-        const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || "motivo desconocido"
-        resetGooglePromptState()
-        finish(() => reject(new LoginError("google_auth_failed", `No se pudo abrir el selector de Google (${reason})`)))
-      }
-    })
+    // Delay breve para dejar que cancel()/disableAutoSelect limpien el estado previo.
+    window.setTimeout(() => {
+      googleId.prompt((notification) => {
+        // Captura casos típicos de bloqueo por popup/políticas del navegador.
+        if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
+          const rawReason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || "motivo desconocido"
+          const reason = normalizeGooglePromptReason(rawReason)
+          resetGooglePromptState()
+          finish(() => reject(new LoginError("google_auth_failed", `No se pudo abrir el selector de Google (${reason})`)))
+        }
+      })
+    }, 60)
 
     // Timeout defensivo para no dejar la promesa pendiente indefinidamente.
     timeoutId = window.setTimeout(() => {
@@ -233,6 +267,28 @@ function requestGoogleIdToken(): Promise<string> {
       finish(() => reject(new LoginError("google_auth_failed", "Timeout al esperar respuesta de Google")))
     }, 30000)
   })
+}
+
+async function requestGoogleIdToken(): Promise<string> {
+  // En iOS, FedCM todavía da más falsos positivos de `suppressed_by_user`.
+  // Iniciamos sin FedCM y, si hace falta, reintentamos con el modo alternativo.
+  const firstMode: GooglePromptMode = { useFedCm: !isIosBrowser() }
+  const fallbackMode: GooglePromptMode = { useFedCm: !firstMode.useFedCm }
+
+  const attemptId = nextGoogleLoginAttemptId()
+
+  try {
+    return await requestGoogleIdTokenWithMode(firstMode, attemptId)
+  } catch (error) {
+    const message = error instanceof LoginError ? error.message : String(error ?? "")
+    const reason = normalizeGooglePromptReason(message)
+
+    if (!reason.includes("suppressed_by_user")) {
+      throw error
+    }
+
+    return requestGoogleIdTokenWithMode(fallbackMode, attemptId + 1)
+  }
 }
 
 function normalizeIdToken(rawToken: string): string {
