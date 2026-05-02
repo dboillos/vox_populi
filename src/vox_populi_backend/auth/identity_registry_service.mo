@@ -37,6 +37,15 @@ module {
     Text.map(email, Prim.charToLower);
   };
 
+  // Deriva una clave de cache hasheada: hash(email + "|" + salt)
+  // Proposito: almacenar identidades sin exponer email en plaintext en estado estable.
+  // El hash se combina con el salt para evitar que un atacante que compromise
+  // solo el estado (sin salt) pueda correlacionar votos con emails conocidos.
+  func hashIdentityKey(email : Text, salt : Text) : Text {
+    let combined = email # "|" # salt;
+    "hid-" # Nat32.toText(Text.hash(combined));
+  };
+
   func buildRandomPseudonymousId(nowNs : Int, randomBlob : ?Blob, fallbackSeed : Text) : Text {
     switch (randomBlob) {
       case (?blob) {
@@ -51,13 +60,15 @@ module {
 
   // API CONTRACT: buildIdentityMap
   // Parametros:
-  // - entries: espejo estable (identityKey, voterId).
+  // - entries: espejo estable (hashedIdentityKey, voterId).
   // Resultado:
   // - hashmap transient para busquedas O(1) promedio.
+  // Nota: las claves en entries ya estan hasheadas desde attachPseudonymousIdentity.
+  //       El salt se usa solo en attachPseudonymousIdentity, no aqui.
   public func buildIdentityMap(entries : List.List<(Text, Text)>) : IdentityRegistry {
     let identity = HashMap.HashMap<Text, Text>(64, Text.equal, Text.hash);
-    for ((identityKey, voterId) in List.toIter(entries)) {
-      identity.put(identityKey, voterId);
+    for ((hashedKey, voterId) in List.toIter(entries)) {
+      identity.put(hashedKey, voterId);
     };
     identity;
   };
@@ -65,13 +76,14 @@ module {
   // API CONTRACT: attachPseudonymousIdentity
   // Parametros:
   // - randomSource: origen de aleatoriedad para nuevos identificadores.
-  // - backendEmailSalt: salt estable del backend usado en semilla fallback.
+  // - backendEmailSalt: salt estable del backend usado para hashear la identidad.
   // - nowNs: timestamp de red en nanosegundos.
   // - validation: resultado de tokeninfo (email validado o motivo de error).
-  // - identityRegistry: indice transient identityKey -> voterId.
-  // - identityRegistryEntries: espejo estable del registro.
+  // - identityRegistry: indice transient hashedKey -> voterId.
+  // - identityRegistryEntries: espejo estable del registro con claves hasheadas.
   // Resultado:
   // - validacion final con voterId opaco y espejo estable actualizado.
+  // Nota: guardamos hash(email + salt) como clave, no el email en plaintext.
   public func attachPseudonymousIdentity(
     randomSource : RandomSource,
     backendEmailSalt : Text,
@@ -103,7 +115,10 @@ module {
         };
       };
 
-    switch (identityRegistry.get(normalizedIdentityKey)) {
+    // Hashear: email_normalizado + salt para no exponer email en estado.
+    let hashedIdentityKey = hashIdentityKey(normalizedIdentityKey, backendEmailSalt);
+
+    switch (identityRegistry.get(hashedIdentityKey)) {
       case (?existingVoterId) {
         return {
           validation = {
@@ -131,8 +146,8 @@ module {
       normalizedIdentityKey # ":" # backendEmailSalt,
     );
 
-    identityRegistry.put(normalizedIdentityKey, generatedVoterId);
-    let updatedIdentityRegistryEntries = List.push((normalizedIdentityKey, generatedVoterId), identityRegistryEntries);
+    identityRegistry.put(hashedIdentityKey, generatedVoterId);
+    let updatedIdentityRegistryEntries = List.push((hashedIdentityKey, generatedVoterId), identityRegistryEntries);
 
     {
       validation = {
