@@ -4,6 +4,7 @@ import { canisterService } from "@/lib/canister-service"
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "765842824522-ar0t6cn0uet2qmf9v0lvp0q2p09t24b2.apps.googleusercontent.com"
 const GOOGLE_GSI_SRC = "https://accounts.google.com/gsi/client"
 const UOC_DOMAIN = "@uoc.edu"
+const OIDC_STATE_STORAGE_KEY = "vox_populi_google_oidc_state"
 
 export type LoginErrorCode =
   | "sdk_load_failed"
@@ -154,6 +155,68 @@ function normalizeGooglePromptReason(reason: string): string {
     .replace(/suprpressed_by_user/gi, "suppressed_by_user")
 }
 
+function isSuppressedByUserError(error: unknown): boolean {
+  const message = normalizeGooglePromptReason(String(error ?? ""))
+  return message.includes("suppressed_by_user")
+}
+
+function generateOpaqueId(prefix: string): string {
+  const random = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+
+  return `${prefix}-${random}`
+}
+
+function startGoogleOidcRedirect(): never {
+  if (typeof window === "undefined") {
+    throw new LoginError("google_auth_failed", "No se pudo iniciar redirección OIDC")
+  }
+
+  const state = generateOpaqueId("state")
+  const nonce = generateOpaqueId("nonce")
+  const redirectUri = `${window.location.origin}${window.location.pathname}${window.location.search}`
+
+  sessionStorage.setItem(OIDC_STATE_STORAGE_KEY, state)
+
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    response_type: "id_token",
+    scope: "openid email profile",
+    redirect_uri: redirectUri,
+    state,
+    nonce,
+    prompt: "select_account",
+  })
+
+  window.location.assign(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`)
+  throw new LoginError("google_auth_failed", "Redirigiendo a Google...")
+}
+
+function consumeOidcRedirectIdToken(): string | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+
+  const hash = window.location.hash
+  if (!hash || !hash.includes("id_token=")) {
+    return null
+  }
+
+  const params = new URLSearchParams(hash.startsWith("#") ? hash.slice(1) : hash)
+  const idToken = params.get("id_token")
+  const state = params.get("state")
+  const storedState = sessionStorage.getItem(OIDC_STATE_STORAGE_KEY)
+
+  if (!idToken || !state || !storedState || state !== storedState) {
+    return null
+  }
+
+  sessionStorage.removeItem(OIDC_STATE_STORAGE_KEY)
+  window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`)
+  return idToken
+}
+
 function resetGooglePromptState() {
   const googleId = window.google?.accounts?.id
   if (!googleId) {
@@ -287,7 +350,15 @@ async function requestGoogleIdToken(): Promise<string> {
       throw error
     }
 
-    return requestGoogleIdTokenWithMode(fallbackMode, attemptId + 1)
+    try {
+      return await requestGoogleIdTokenWithMode(fallbackMode, attemptId + 1)
+    } catch (fallbackError) {
+      if (isSuppressedByUserError(fallbackError)) {
+        startGoogleOidcRedirect()
+      }
+
+      throw fallbackError
+    }
   }
 }
 
@@ -328,10 +399,14 @@ function normalizeIdToken(rawToken: string): string {
 export async function loginWithGoogle(): Promise<LoginIdentity> {
   // Este método SOLO autentica identidad institucional.
   // No escribe votos ni genera aún el identificador de voto.
-  await loadGoogleSdk()
+  const redirectedIdToken = consumeOidcRedirectIdToken()
+
+  if (!redirectedIdToken) {
+    await loadGoogleSdk()
+  }
 
   // 1) Obtener id_token firmado por Google en cliente.
-  const rawToken = await requestGoogleIdToken()
+  const rawToken = redirectedIdToken ?? await requestGoogleIdToken()
   const idToken = normalizeIdToken(rawToken)
   if (idToken.split(".").length !== 3) {
     throw new LoginError("google_auth_failed", "Formato de id_token inválido")
