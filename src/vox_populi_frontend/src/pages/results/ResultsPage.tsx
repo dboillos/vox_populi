@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { ArrowLeft, Users, TrendingUp, Clock, Download } from "lucide-react"
 // Usamos los alias @ para evitar errores de ruta
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { canisterService, type AggregatedResults, type RawResponse } from "@/lib/canister-service"
 import { useLocale } from "@/lib/locale-context"
-import { getQuestionOptionsByLocale, getTranslatedResultsData } from "@/lib/survey-helpers"
+import { getQuestionOptionsByLocale, getTranslatedQuestions, getTranslatedResultsData } from "@/lib/survey-helpers"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
   PieChart,
@@ -24,7 +24,9 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  Legend
+  Legend,
+  LabelList,
+  ResponsiveContainer,
 } from "recharts"
 
 interface ResultsPageProps {
@@ -48,6 +50,38 @@ const EMPTY_RESULTS: AggregatedResults = {
   impactRadar: [],
   securityMatrix: [],
   icpPreference: 0,
+}
+
+type QuestionChartDatum = {
+  name: string
+  count: number
+  value: number
+}
+
+function buildQuestionDistribution(rawResponses: RawResponse[], questionId: number, options: string[]) {
+  const counts = new Array(options.length).fill(0)
+  let answeredCount = 0
+
+  rawResponses.forEach((response) => {
+    const answer = response.answers.find((item) => item.questionId === questionId)
+    if (!answer || answer.optionIndex < 0 || answer.optionIndex >= options.length) {
+      return
+    }
+
+    counts[answer.optionIndex] += 1
+    answeredCount += 1
+  })
+
+  const data: QuestionChartDatum[] = options.map((option, index) => ({
+    name: option,
+    count: counts[index],
+    value: answeredCount > 0 ? Number(((counts[index] / answeredCount) * 100).toFixed(1)) : 0,
+  }))
+
+  return {
+    answeredCount,
+    data,
+  }
 }
 
 function generateCSV(rawResponses: RawResponse[], questionOptions: Record<number, string[]>): string {
@@ -120,6 +154,7 @@ export function ResultsPage({ onBack }: ResultsPageProps) {
   const [rawResponses, setRawResponses] = useState<RawResponse[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const questionOptions = getQuestionOptionsByLocale(locale)
+  const translatedQuestions = getTranslatedQuestions(locale)
   const translatedData = getTranslatedResultsData(locale, results)
 
   useEffect(() => {
@@ -190,6 +225,74 @@ export function ResultsPage({ onBack }: ResultsPageProps) {
   const { totalVotes, blockchainTrustPercentage, averageHoursSaved, icpPreference } = results
   const toolDistribution = translatedData.toolDistribution
   const chartWidth = isMobile ? 300 : 460
+  const questionCharts = useMemo(() => {
+    const chartQuestionIds = [2, 7, 11]
+
+    return chartQuestionIds
+      .map((questionId) => {
+        const question = translatedQuestions.find((item) => item.id === questionId)
+        if (!question) {
+          return null
+        }
+
+        return {
+          id: questionId,
+          text: question.text,
+          ...buildQuestionDistribution(rawResponses, questionId, question.options),
+        }
+      })
+      .filter((item): item is { id: number; text: string; answeredCount: number; data: QuestionChartDatum[] } => item !== null)
+  }, [rawResponses, translatedQuestions])
+  const question2Chart = questionCharts.find((item) => item.id === 2) ?? null
+  const question7Chart = questionCharts.find((item) => item.id === 7) ?? null
+  const question11Chart = questionCharts.find((item) => item.id === 11) ?? null
+
+  const renderQuestionChart = (questionChart: { id: number; text: string; answeredCount: number; data: QuestionChartDatum[] }) => (
+    <Card key={questionChart.id}>
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold">{`${questionChart.text} (Pregunta ${questionChart.id})`}</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          {isLoading ? "..." : `${questionChart.answeredCount} / ${totalVotes} respuestas`}
+        </p>
+      </CardHeader>
+      <CardContent className="min-w-0">
+        <div className="w-full" style={{ height: Math.max(260, questionChart.data.length * 52 + 40) }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={questionChart.data}
+              layout="vertical"
+              margin={{ top: 8, right: 36, left: 12, bottom: 8 }}
+            >
+              <XAxis type="number" domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+              <YAxis type="category" dataKey="name" width={isMobile ? 130 : 220} tick={{ fontSize: 11 }} />
+              <Tooltip
+                formatter={(value, _name, item) => {
+                  const numericValue = typeof value === "number" ? value : Number(value ?? 0)
+                  const payload = item?.payload as QuestionChartDatum | undefined
+
+                  return [
+                    `${numericValue}%`,
+                    payload ? `${payload.count} respuestas` : "%",
+                  ]
+                }}
+                contentStyle={{ backgroundColor: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px" }}
+              />
+              <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                {questionChart.data.map((item, index) => (
+                  <Cell key={`${questionChart.id}-${item.name}`} fill={COLORS[index % COLORS.length]} />
+                ))}
+                <LabelList
+                  dataKey="value"
+                  position="right"
+                  formatter={(value) => `${typeof value === "number" ? value : Number(value ?? 0)}%`}
+                />
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -270,7 +373,7 @@ export function ResultsPage({ onBack }: ResultsPageProps) {
           </Card>
         </motion.div>
 
-        {/* Charts Row 1 */}
+        {/* Charts Row 1: Preguntas 1-2 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -311,6 +414,11 @@ export function ResultsPage({ onBack }: ResultsPageProps) {
             </CardContent>
           </Card>
 
+          {question2Chart ? renderQuestionChart(question2Chart) : null}
+        </div>
+
+        {/* Charts Row 2: Preguntas 3-7 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg font-semibold">{t.results.aiImpact}</CardTitle>
@@ -333,9 +441,11 @@ export function ResultsPage({ onBack }: ResultsPageProps) {
               </div>
             </CardContent>
           </Card>
+
+          {question7Chart ? renderQuestionChart(question7Chart) : null}
         </div>
 
-        {/* Charts Row 2 */}
+        {/* Charts Row 3: Preguntas 8-11 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
@@ -356,6 +466,11 @@ export function ResultsPage({ onBack }: ResultsPageProps) {
             </CardContent>
           </Card>
 
+          {question11Chart ? renderQuestionChart(question11Chart) : null}
+        </div>
+
+        {/* Charts Row 4: Pregunta 12 a ancho completo */}
+        <div className="grid grid-cols-1 gap-6">
           <Card>
             <CardHeader>
               <CardTitle className="text-lg font-semibold">{t.results.digitalSovereignty}</CardTitle>

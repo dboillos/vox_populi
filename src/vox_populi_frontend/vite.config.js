@@ -8,6 +8,15 @@ import dotenv from 'dotenv';
 
 dotenv.config({ path: '../../.env' });
 
+function resolveLocalCanisterId(canisterName) {
+  try {
+    const ids = JSON.parse(readFileSync(new URL('../../.dfx/local/canister_ids.json', import.meta.url)));
+    return ids?.[canisterName]?.local || '';
+  } catch {
+    return '';
+  }
+}
+
 function resolveMainnetCanisterId(canisterName) {
   try {
     const ids = JSON.parse(readFileSync(new URL('../../canister_ids.json', import.meta.url)));
@@ -50,6 +59,8 @@ function resolveGitCommitRef() {
 
 const mainnetBackendCanisterId = resolveMainnetCanisterId('vox_populi_backend');
 const mainnetFrontendCanisterId = resolveMainnetCanisterId('vox_populi_frontend');
+const localBackendCanisterId = resolveLocalCanisterId('vox_populi_backend');
+const localFrontendCanisterId = resolveLocalCanisterId('vox_populi_frontend');
 
 
 const rawGithubReleaseTag = (process.env.VITE_GITHUB_RELEASE_TAG || '').trim();
@@ -63,15 +74,25 @@ const githubReleaseTag =
     ? rawGithubReleaseTag
     : autoGithubReleaseTag;
 
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  const useLocalCanisters = command === 'serve';
+  const resolvedBackendCanisterId = useLocalCanisters
+    ? (localBackendCanisterId || mainnetBackendCanisterId)
+    : mainnetBackendCanisterId;
+  const resolvedFrontendCanisterId = useLocalCanisters
+    ? (localFrontendCanisterId || mainnetFrontendCanisterId)
+    : mainnetFrontendCanisterId;
+  const resolvedDfxNetwork = useLocalCanisters ? 'local' : 'ic';
+
+  return {
   define: {
-    // DFX_NETWORK fijado a "ic" para que la declaración generada por dfx
-    // no llame fetchRootKey() al cargar el módulo en producción.
-    'process.env.DFX_NETWORK': JSON.stringify('ic'),
-    'process.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(mainnetBackendCanisterId),
-    'process.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(mainnetFrontendCanisterId),
-    'import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(mainnetBackendCanisterId),
-    'import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(mainnetFrontendCanisterId),
+    // En `serve` se usan IDs locales de .dfx; en build/release se fijan IDs mainnet.
+    'process.env.DFX_NETWORK': JSON.stringify(resolvedDfxNetwork),
+    'import.meta.env.DFX_NETWORK': JSON.stringify(resolvedDfxNetwork),
+    'process.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(resolvedBackendCanisterId),
+    'process.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(resolvedFrontendCanisterId),
+    'import.meta.env.CANISTER_ID_VOX_POPULI_BACKEND': JSON.stringify(resolvedBackendCanisterId),
+    'import.meta.env.CANISTER_ID_VOX_POPULI_FRONTEND': JSON.stringify(resolvedFrontendCanisterId),
     'import.meta.env.VITE_GITHUB_RELEASE_TAG': JSON.stringify(githubReleaseTag),
     'import.meta.env.VITE_GITHUB_RELEASE_TAG_AUTO': JSON.stringify(autoGithubReleaseTag),
     'import.meta.env.VITE_GITHUB_GIT_TAG_AUTO': JSON.stringify(autoGitTagRef),
@@ -119,4 +140,5 @@ export default defineConfig({
     ],
     dedupe: ['@icp-sdk/core'],
   },
+  };
 });

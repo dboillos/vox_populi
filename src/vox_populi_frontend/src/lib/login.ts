@@ -51,6 +51,7 @@ declare global {
             callback: (response: GoogleCredentialResponse) => void
           }) => void
           disableAutoSelect: () => void
+          cancel?: () => void
           prompt: (callback?: (notification: GooglePromptNotification) => void) => void
         }
       }
@@ -133,8 +134,47 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
+function resetGooglePromptState() {
+  const googleId = window.google?.accounts?.id
+  if (!googleId) {
+    return
+  }
+
+  googleId.cancel?.()
+  googleId.disableAutoSelect()
+}
+
 function isAllowedDomain(email: string): boolean {
   return normalizeEmail(email).endsWith(UOC_DOMAIN)
+}
+
+function formatBackendLoginError(error: unknown): LoginError {
+  const message = String(error ?? "")
+  const isLocalRuntime = import.meta.env.DFX_NETWORK === "local"
+  const localHost = import.meta.env.VITE_IC_HOST || "http://localhost:4943"
+
+  if (
+    message.includes("Failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("NetworkError") ||
+    message.includes("canister_not_found") ||
+    message.includes("replica") ||
+    message.includes("Connection refused")
+  ) {
+    if (isLocalRuntime) {
+      return new LoginError(
+        "backend_validation_failed",
+        `No se pudo contactar con el backend local en ${localHost}. Inicia la réplica y despliega los canisters con dfx/icp antes de probar el login.`,
+      )
+    }
+
+    return new LoginError(
+      "backend_validation_failed",
+      "No se pudo contactar con el backend de autenticación. Inténtalo de nuevo en unos segundos.",
+    )
+  }
+
+  return new LoginError("backend_validation_failed", message || "Falló la validación del login en backend")
 }
 
 function requestGoogleIdToken(): Promise<string> {
@@ -145,7 +185,10 @@ function requestGoogleIdToken(): Promise<string> {
       return
     }
 
+    resetGooglePromptState()
+
     let settled = false
+    let timeoutId: number | null = null
     // Garantiza que resolvemos/rechazamos una sola vez aunque lleguen varios callbacks.
     const finish = (result: () => void) => {
       if (settled) {
@@ -153,6 +196,9 @@ function requestGoogleIdToken(): Promise<string> {
       }
 
       settled = true
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId)
+      }
       result()
     }
 
@@ -172,19 +218,18 @@ function requestGoogleIdToken(): Promise<string> {
       },
     })
 
-    // Evita que Google seleccione automáticamente la sesión previa y favorece la UI de selección.
-    googleId.disableAutoSelect()
-
     googleId.prompt((notification) => {
       // Captura casos típicos de bloqueo por popup/políticas del navegador.
       if (notification.isNotDisplayed?.() || notification.isSkippedMoment?.()) {
         const reason = notification.getNotDisplayedReason?.() || notification.getSkippedReason?.() || "motivo desconocido"
+        resetGooglePromptState()
         finish(() => reject(new LoginError("google_auth_failed", `No se pudo abrir el selector de Google (${reason})`)))
       }
     })
 
     // Timeout defensivo para no dejar la promesa pendiente indefinidamente.
-    setTimeout(() => {
+    timeoutId = window.setTimeout(() => {
+      resetGooglePromptState()
       finish(() => reject(new LoginError("google_auth_failed", "Timeout al esperar respuesta de Google")))
     }, 30000)
   })
@@ -236,7 +281,12 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
     throw new LoginError("google_auth_failed", "Formato de id_token inválido")
   }
   // 2) Delegar validación de seguridad al backend/canister.
-  const validation = await canisterService.validateGoogleIdToken(idToken, GOOGLE_CLIENT_ID)
+  let validation
+  try {
+    validation = await canisterService.validateGoogleIdToken(idToken, GOOGLE_CLIENT_ID)
+  } catch (error) {
+    throw formatBackendLoginError(error)
+  }
 
   if (!validation.isValid || !validation.email || !validation.voterId) {
     if (validation.reason.includes("dominio")) {

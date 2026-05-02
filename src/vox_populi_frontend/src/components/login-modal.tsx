@@ -41,6 +41,8 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
         setAuthError(t.login.domainError)
       } else if (error instanceof LoginError && error.code === "google_auth_failed") {
         setAuthError(error.message)
+      } else if (error instanceof LoginError && error.code === "backend_validation_failed") {
+        setAuthError(error.message)
       } else {
         setAuthError(t.login.accessDeniedDescription)
       }
@@ -51,7 +53,7 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
 
   const handleRetry = () => {
     setAuthError(null)
-    handleGoogleLogin()
+    void handleGoogleLogin()
   }
 
   return (
