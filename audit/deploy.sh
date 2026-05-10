@@ -506,29 +506,14 @@ if [ "$FORCE_REINSTALL" -eq 1 ]; then
   print_ok "Backend reinstalado"
 else
   set +e
-  INSTALL_OUTPUT=$(install_backend upgrade 0 2>&1)
+  install_backend upgrade 0
   RC=$?
   set -e
   if [ $RC -ne 0 ]; then
     print_warn "La instalación del backend devolvió el código $RC."
-    printf '%s\n' "$INSTALL_OUTPUT"
-    # Detectar error de persistencia (IC0504) interactivo
-    if echo "$INSTALL_OUTPUT" | grep -q -E "IC0504|Missing upgrade option"; then
-      echo
-      echo "La actualización falló por una restricción de persistencia (IC0504)."
-      echo "Se requiere usar --reinstall para perder el estado almacenado."
-      echo ""
-      echo "Ejecuta con: $0 --reinstall [opciones]"
-      echo ""
-      exit 1
-    else
-      echo "Intentando despliegue alternativo..."
-      if command -v dfx >/dev/null 2>&1; then
-        dfx deploy --network ic --no-wallet || true
-      else
-        echo "No se ejecuta fallback de despliegue alternativo: dfx no está disponible." >&2
-      fi
-    fi
+    echo "Si el CLI indicó un cambio incompatible de interfaz, debes confirmarlo manualmente durante la instalación o revisar la compatibilidad Candid antes de reintentar." >&2
+    echo "Si el problema fuese una restricción de persistencia del canister, entonces sí sería necesario ejecutar: $0 --reinstall [opciones]" >&2
+    exit $RC
   fi
   if [ $RC -eq 0 ]; then
     print_ok "Backend desplegado correctamente"
