@@ -28,6 +28,29 @@ import Validation "./shared/validation";
 // - Reducir acoplamiento entre endpoints y calculos.
 // - Facilitar pruebas y mantenimiento por responsabilidades.
 persistent actor Self {
+  // Compatibilidad de upgrade: formato histórico de voto estable con timestamp.
+  // Solo se conserva para que upgrades futuros lean memoria antigua sin trap.
+  type LegacyStoredVote = {
+    voteId : Nat;
+    surveyId : Text;
+    voterId : Text;
+    timestamp : Nat;
+    answers : [AnswerSelection];
+  };
+
+  func migrateLegacyVote(vote : LegacyStoredVote) : Types.StoredVote {
+    {
+      voteId = vote.voteId;
+      surveyId = vote.surveyId;
+      voterId = vote.voterId;
+      answers = vote.answers;
+    };
+  };
+
+  func migrateLegacyVotes(votes : List.List<LegacyStoredVote>) : List.List<Types.StoredVote> {
+    List.map<LegacyStoredVote, Types.StoredVote>(votes, migrateLegacyVote);
+  };
+
   // Reexport de tipos para mantener estable el contrato Candid.
   // Esto garantiza que las declaraciones TypeScript sigan alineadas.
   public type AnswerSelection = Types.AnswerSelection;
@@ -47,13 +70,10 @@ persistent actor Self {
 
   // Contador incremental para generar identificadores de voto legibles.
   var nextVoteId : Nat = 1;
-  // Almacen principal de votos en lista enlazada.
-  // Ventaja: insercion O(1) con List.push sin copiar todo el historico.
-  // Nota: la lista guarda los votos mas recientes al inicio.
-  // Enfoque de rendimiento del backend:
-  // - Escritura (submitVote): O(1) por insercion.
-  // - Lectura/cálculo (queries agregadas): O(n) sobre votos filtrados.
-  var storedVotes : List.List<Types.StoredVote> = List.nil<Types.StoredVote>();
+  // Estado legado: se conserva por compatibilidad de memoria estable.
+  var storedVotes : List.List<LegacyStoredVote> = List.nil<LegacyStoredVote>();
+  // Estado activo sin timestamp, usado por la lógica funcional actual.
+  var storedVotesV2 : List.List<Types.StoredVote> = migrateLegacyVotes(storedVotes);
   // Version de la logica de negocio del cuestionario.
   // Se expone por auditoria en getAuditData.
   let surveyCodeVersion : Text = "1.0.0";
@@ -82,7 +102,7 @@ persistent actor Self {
   // Indices en memoria para consultas O(1).
   transient let voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
   transient let identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
-  transient let surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
+  transient let surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotesV2);
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
   // Para que funcione, este canister debe estar en su propia lista de controladores:
@@ -248,7 +268,7 @@ persistent actor Self {
     let result = VoteRuntimeService.submitVoteWithIndexes(
       voteLookup,
       surveyVotesCache,
-      storedVotes,
+      storedVotesV2,
       nextVoteId,
       voteLookupEntries,
       surveyId,
@@ -258,7 +278,7 @@ persistent actor Self {
       questionOptionCounts,
     );
 
-    storedVotes := result.storedVotes;
+    storedVotesV2 := result.storedVotes;
     nextVoteId := result.nextVoteId;
     voteLookupEntries := result.voteLookupEntries;
 
