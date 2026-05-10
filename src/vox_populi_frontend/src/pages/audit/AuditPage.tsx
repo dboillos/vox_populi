@@ -102,6 +102,11 @@ export function AuditPage({ onBack }: AuditPageProps) {
   const githubTagDisplay = githubTagRef || "No disponible"
   const githubCommitDisplay = githubCommitRef || "No disponible"
   const githubReleaseDisplay = githubTagRef || githubReleaseRef || "No disponible"
+  const hasAuditedTag = !!githubTagRef
+  const checkoutRef = githubTagRef || githubCommitRef || githubReleaseRef || "main"
+  const githubRepoSlug = githubRepoUrl
+    .replace(/^https?:\/\/github\.com\//, "")
+    .replace(/\/+$/, "") || "dboillos/vox_populi"
   const githubTagUrl = githubTagRef ? `${githubRepoUrl}/tree/${githubTagRef}` : `${githubRepoUrl}/tags`
   const githubCommitUrl = githubCommitRef ? `${githubRepoUrl}/commit/${githubCommitRef}` : `${githubRepoUrl}/commits`
   const githubReleaseUrl = githubTagRef ? `${githubRepoUrl}/releases/tag/${githubTagRef}` : `${githubRepoUrl}/releases`
@@ -153,13 +158,14 @@ export function AuditPage({ onBack }: AuditPageProps) {
       description: verifyTexts.step2Desc,
       command: verifyTexts.step2CommandTemplate
         .replaceAll("{repoUrl}", githubRepoUrl)
-        .replaceAll("{releaseTag}", githubReleaseDisplay),
+        .replaceAll("{releaseTag}", checkoutRef),
     },
     {
       title: verifyTexts.step3,
-      description: verifyTexts.step3Desc,
-      command: verifyTexts.step3Command
+      description: hasAuditedTag ? verifyTexts.step3Desc : verifyTexts.step3NoTagDesc,
+      command: (hasAuditedTag ? verifyTexts.step3Command : verifyTexts.step3NoTagCommand)
         .replaceAll("{repoUrl}", githubRepoUrl)
+        .replaceAll("{repoSlug}", githubRepoSlug)
         .replaceAll("{releaseTag}", githubReleaseDisplay),
     },
   ]

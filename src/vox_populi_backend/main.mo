@@ -199,8 +199,6 @@ persistent actor Self {
   // - surveyId: identificador logico de la encuesta.
   // - idToken: JWT emitido por Google Identity Services.
   // - answers: lista normalizada de respuestas (questionId, optionIndex).
-  // - _timestamp: campo legado enviado por cliente (actualmente se ignora).
-  //   El backend usa tiempo de red del canister para evitar manipulacion del reloj cliente.
   // Precondiciones:
   // - surveyId no vacio.
   // - answers no vacio.
@@ -225,7 +223,6 @@ persistent actor Self {
     surveyId : Text,
     idToken : Text,
     answers : [AnswerSelection],
-    _timestamp : Nat,
   ) : async VoteResponse {
     let validation = await validateAndAttachIdentity(idToken, expectedGoogleAudience);
     if (not validation.isValid) {
@@ -258,7 +255,6 @@ persistent actor Self {
       resolvedVoterId,
       answers,
       Principal.toText(caller),
-      Time.now(),
       questionOptionCounts,
     );
 

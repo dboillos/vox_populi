@@ -88,7 +88,6 @@ function generateCSV(rawResponses: RawResponse[], questionOptions: Record<number
   const headers = [
     "Numero",
     "Voter ID",
-    "Timestamp",
     "Pregunta 1 - Herramienta IA",
     "Pregunta 2 - Fase académica",
     "Pregunta 3 - Horas ahorradas",
@@ -115,7 +114,6 @@ function generateCSV(rawResponses: RawResponse[], questionOptions: Record<number
   const rows = rawResponses.map((response) => [
     response.numero,
     response.voterId,
-    new Date(response.timestamp).toISOString(),
     resolveAnswer(response, 1),
     resolveAnswer(response, 2),
     resolveAnswer(response, 3),

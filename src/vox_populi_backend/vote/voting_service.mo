@@ -1,5 +1,4 @@
 import Array "mo:base/Array";
-import Int "mo:base/Int";
 import List "mo:base/List";
 import Nat "mo:base/Nat";
 import Text "mo:base/Text";
@@ -29,7 +28,6 @@ module {
   // - nextVoteId: secuencia actual de ids internos.
   // - surveyId/voterId/answers: payload de voto.
   // - callerPrincipalText: principal del caller en texto para fallback de identidad.
-  // - nowNs: timestamp actual en nanosegundos.
   // - questionOptionCounts: cardinalidad por pregunta.
   // Resultado:
   // - respuesta funcional y nuevo estado persistible.
@@ -40,7 +38,6 @@ module {
     resolvedVoterId : Text,
     answers : [Types.AnswerSelection],
     duplicateVoteId : ?Nat,
-    nowNs : Int,
     questionOptionCounts : [Nat],
   ) : SubmitVoteResult {
     switch (VotePolicy.validateSubmitPayload(surveyId, answers, questionOptionCounts)) {
@@ -75,12 +72,10 @@ module {
       case null {};
     };
 
-    let currentTimestamp = Int.abs(nowNs / 1_000_000);
     let newVote : Types.StoredVote = {
       voteId = nextVoteId;
       surveyId = surveyId;
       voterId = resolvedVoterId;
-      timestamp = currentTimestamp;
       answers = answers;
     };
 
@@ -198,7 +193,6 @@ module {
       {
         numero = index + 1;
         voterId = vote.voterId;
-        timestamp = vote.timestamp;
         answers = vote.answers;
       };
     });

@@ -11,7 +11,6 @@ export interface VotePayload {
   surveyId: string
   idToken: string
   answers: AnswerSelection[]
-  timestamp: number
 }
 
 export interface VoteResponse {
@@ -38,7 +37,6 @@ export interface AggregatedResults {
 export interface RawResponse {
   numero: number
   voterId: string
-  timestamp: number
   answers: AnswerSelection[]
 }
 
@@ -76,7 +74,7 @@ interface BackendVoteResponse {
 }
 
 interface BackendActor {
-  submitVote: (surveyId: string, idToken: string, answers: Array<{ questionId: bigint; optionIndex: bigint }>, timestamp: bigint) => Promise<BackendVoteResponse>
+  submitVote: (surveyId: string, idToken: string, answers: Array<{ questionId: bigint; optionIndex: bigint }>) => Promise<BackendVoteResponse>
   getAggregatedResults: (surveyId: string) => Promise<{
     totalVotes: bigint
     blockchainTrustPercentage: bigint
@@ -89,7 +87,6 @@ interface BackendActor {
   getRawResponses: (surveyId: string) => Promise<Array<{
     numero: bigint
     voterId: string
-    timestamp: bigint
     answers: Array<{ questionId: bigint; optionIndex: bigint }>
   }>>
   getAuditData: () => Promise<AuditData>
@@ -344,7 +341,6 @@ export const canisterService = {
         payload.surveyId,
         payload.idToken,
         toBackendAnswers(payload.answers),
-        BigInt(payload.timestamp),
       )
     })
 
@@ -393,7 +389,6 @@ export const canisterService = {
     return responses.map((response) => ({
       numero: bigintToNumber(response.numero),
       voterId: response.voterId,
-      timestamp: bigintToNumber(response.timestamp),
       answers: response.answers.map((answer) => ({
         questionId: bigintToNumber(answer.questionId),
         optionIndex: bigintToNumber(answer.optionIndex),

@@ -1,5 +1,4 @@
 import HashMap "mo:base/HashMap";
-import Int "mo:base/Int";
 import List "mo:base/List";
 import Nat "mo:base/Nat";
 import Text "mo:base/Text";
@@ -85,7 +84,6 @@ module {
   // - storedVotes/nextVoteId/voteLookupEntries: estado actual persistible.
   // - surveyId/voterId/answers: payload de voto.
   // - callerPrincipalText: fallback de identidad cuando voterId viene vacio.
-  // - nowNs: timestamp de red en nanosegundos.
   // - questionOptionCounts: cardinalidad por pregunta.
   // Resultado:
   // - respuesta funcional + nuevo estado persistible.
@@ -101,7 +99,6 @@ module {
     voterId : Text,
     answers : [Types.AnswerSelection],
     callerPrincipalText : Text,
-    nowNs : Int,
     questionOptionCounts : [Nat],
   ) : SubmitWithIndexesResult {
     let resolvedVoterId = VotePolicy.resolveVoterId(voterId, callerPrincipalText);
@@ -114,7 +111,6 @@ module {
       resolvedVoterId,
       answers,
       duplicateVoteId,
-      nowNs,
       questionOptionCounts,
     );
 

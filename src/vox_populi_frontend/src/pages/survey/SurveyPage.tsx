@@ -116,7 +116,6 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
           surveyId: "ai-uoc-2024",
           idToken: userIdToken,
           answers: normalizedAnswers,
-          timestamp: Date.now(),
         })
 
         if (result.success) {

@@ -65,7 +65,6 @@ module {
   public type RawResponse = {
     numero : Nat;
     voterId : Text;
-    timestamp : Nat;
     answers : [AnswerSelection];
   };
 
@@ -102,7 +101,6 @@ module {
     voteId : Nat;
     surveyId : Text;
     voterId : Text;
-    timestamp : Nat;
     answers : [AnswerSelection];
   };
 };

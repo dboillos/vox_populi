@@ -120,6 +120,8 @@ export interface Translations {
       step3: string
       step3Desc: string
       step3Command: string
+      step3NoTagDesc: string
+      step3NoTagCommand: string
       copy: string
       copied: string
       repo: string
@@ -310,7 +312,9 @@ survey: {
         step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
         step3: "Ejecutar verify.sh",
         step3Desc: "verify.sh descarga artefactos forenses del release (backend.wasm + frontend-dist), compara backend vs module_hash on-chain y frontend archivo-a-archivo contra list() del asset canister (mainnet).",
-        step3Command: "# Linux/macOS (probado)\n./audit/verify.sh {releaseTag}\n\n# Esperado: backend COINCIDE y frontend sin NO_COINCIDE/FALTA_EN_MAINNET\n\n# PowerShell (referencia, no probado oficialmente)\n# Opcion 1: usando Git Bash en PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Opcion 2: usando WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
+        step3Command: "# Linux/macOS (probado)\n./audit/verify.sh {releaseTag}\n\n# Esperado: backend COINCIDE y TODOS los archivos frontend en estado COINCIDE\n# (sin filas NO_COINCIDE ni FALTA_EN_MAINNET)\n\n# PowerShell (referencia, no probado oficialmente)\n# Opcion 1: usando Git Bash en PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Opcion 2: usando WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
+        step3NoTagDesc: "Si no hay tag/release, lanza manualmente el workflow de auditoria en GitHub Actions (Run workflow) y compara los SHA-256 mostrados en logs con los hashes on-chain de esta pagina.",
+        step3NoTagCommand: "# Opcion CLI (sin tag): ejecutar workflow manual sobre un ref concreto\n# Requiere permisos de lectura sobre el repo en GitHub\ngh workflow run trusted-release-pipeline.yml --repo {repoSlug} --ref {releaseTag}\n\n# Ver ultimo run y abrir logs para ver bloque 'HASHES CRIPTOGRAFICOS'\nRUN_ID=$(gh run list --repo {repoSlug} --workflow trusted-release-pipeline.yml --limit 1 --json databaseId -q '.[0].databaseId')\ngh run view \"$RUN_ID\" --repo {repoSlug} --log\n\n# Opcion Web:\n# GitHub -> Actions -> Trusted Release Pipeline -> Run workflow",
         copy: "Copiar",
         copied: "Copiado",
         repo: "Repositorio fuente",
@@ -486,7 +490,9 @@ survey: {
         step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
         step3: "Run verify.sh (no deploy)",
         step3Desc: "verify.sh downloads forensic release artifacts (backend.wasm + frontend-dist), compares backend vs on-chain module_hash, and checks frontend file-by-file against asset canister list() on mainnet.",
-        step3Command: "# Linux/macOS (tested)\n./audit/verify.sh {releaseTag}\n\n# Expected: backend MATCH and frontend with no NO_COINCIDE/FALTA_EN_MAINNET rows\n\n# PowerShell (reference, not officially tested)\n# Option 1: Git Bash available in PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Option 2: via WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
+        step3Command: "# Linux/macOS (tested)\n./audit/verify.sh {releaseTag}\n\n# Expected: backend MATCH and ALL frontend files in COINCIDE/MATCH state\n# (no NO_COINCIDE or FALTA_EN_MAINNET rows)\n\n# PowerShell (reference, not officially tested)\n# Option 1: Git Bash available in PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Option 2: via WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
+        step3NoTagDesc: "If there is no tag/release, run the audit workflow manually in GitHub Actions (Run workflow) and compare the SHA-256 values shown in logs against the on-chain hashes displayed on this page.",
+        step3NoTagCommand: "# CLI option (no tag): run manual workflow on a specific ref\n# Requires read access to the repository on GitHub\ngh workflow run trusted-release-pipeline.yml --repo {repoSlug} --ref {releaseTag}\n\n# Get latest run and inspect logs for the 'HASHES CRIPTOGRAFICOS' section\nRUN_ID=$(gh run list --repo {repoSlug} --workflow trusted-release-pipeline.yml --limit 1 --json databaseId -q '.[0].databaseId')\ngh run view \"$RUN_ID\" --repo {repoSlug} --log\n\n# Web option:\n# GitHub -> Actions -> Trusted Release Pipeline -> Run workflow",
         copy: "Copy",
         copied: "Copied",
         repo: "Source repository",
@@ -662,7 +668,9 @@ survey: {
         step2CommandTemplate: "git clone {repoUrl} vox_populi\ncd vox_populi\ngit checkout {releaseTag}",
         step3: "Executar verify.sh (sense deploy)",
         step3Desc: "verify.sh descarrega artefactes forenses del release (backend.wasm + frontend-dist), compara backend vs module_hash on-chain i valida frontend fitxer-a-fitxer contra list() de l'asset canister a mainnet.",
-        step3Command: "# Linux/macOS (provat)\n./audit/verify.sh {releaseTag}\n\n# Esperat: backend COINCIDE i frontend sense files NO_COINCIDE/FALTA_EN_MAINNET\n\n# PowerShell (referencia, no provat oficialment)\n# Opcio 1: amb Git Bash al PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Opcio 2: amb WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
+        step3Command: "# Linux/macOS (provat)\n./audit/verify.sh {releaseTag}\n\n# Esperat: backend COINCIDE i TOTS els fitxers frontend en estat COINCIDE\n# (sense files NO_COINCIDE ni FALTA_EN_MAINNET)\n\n# PowerShell (referencia, no provat oficialment)\n# Opcio 1: amb Git Bash al PATH\nbash ./audit/verify.sh {releaseTag}\n\n# Opcio 2: amb WSL\n# wsl bash -lc './audit/verify.sh {releaseTag}'",
+        step3NoTagDesc: "Si no hi ha tag/release, executa manualment el workflow d'auditoria a GitHub Actions (Run workflow) i compara els SHA-256 dels logs amb els hashes on-chain mostrats en aquesta pagina.",
+        step3NoTagCommand: "# Opcio CLI (sense tag): executar workflow manual sobre una ref concreta\n# Requereix permisos de lectura al repositori a GitHub\ngh workflow run trusted-release-pipeline.yml --repo {repoSlug} --ref {releaseTag}\n\n# Obtenir l'ultim run i revisar logs (seccio 'HASHES CRIPTOGRAFICOS')\nRUN_ID=$(gh run list --repo {repoSlug} --workflow trusted-release-pipeline.yml --limit 1 --json databaseId -q '.[0].databaseId')\ngh run view \"$RUN_ID\" --repo {repoSlug} --log\n\n# Opcio Web:\n# GitHub -> Actions -> Trusted Release Pipeline -> Run workflow",
         copy: "Copiar",
         copied: "Copiat",
         repo: "Repositori font",
