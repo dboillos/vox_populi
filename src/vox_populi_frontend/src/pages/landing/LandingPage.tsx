@@ -213,7 +213,7 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
           setPendingAction(null) // Limpiamos si cierra sin loguearse
         }}
         onSuccess={(identity) => {
-          login(identity.email, identity.voterId, identity.idToken)
+          login(identity.sessionId, identity.voterId, identity.expiresAt)
           setShowLoginModal(false)
           
           // EJECUCIÓN AUTOMÁTICA: Si había algo pendiente, lo lanzamos ahora

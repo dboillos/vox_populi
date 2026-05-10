@@ -1,5 +1,6 @@
 import { Principal } from "@icp-sdk/core/principal"
 import { Actor, HttpAgent } from "@icp-sdk/core/agent"
+import { ECDSAKeyIdentity } from "@icp-sdk/core/identity"
 import { createActor as createBackendActor, canisterId as generatedCanisterId } from "declarations/vox_populi_backend"
 
 export interface AnswerSelection {
@@ -9,7 +10,7 @@ export interface AnswerSelection {
 
 export interface VotePayload {
   surveyId: string
-  idToken: string
+    sessionId: string
   answers: AnswerSelection[]
 }
 
@@ -17,6 +18,14 @@ export interface VoteResponse {
   success: boolean
   message: string
   voteId?: string
+}
+
+export interface AuthSessionResult {
+  success: boolean
+  sessionId: string
+  expiresAt: bigint
+  voterId: string
+  reason: string
 }
 
 export interface ToolDistributionItem {
@@ -74,7 +83,8 @@ interface BackendVoteResponse {
 }
 
 interface BackendActor {
-  submitVote: (surveyId: string, idToken: string, answers: Array<{ questionId: bigint; optionIndex: bigint }>) => Promise<BackendVoteResponse>
+  authenticateWithGoogle: (idToken: string) => Promise<{ success: boolean; sessionId: string; expiresAt: bigint; voterId: string; reason: string }>
+  submitVote: (surveyId: string, sessionId: string, answers: Array<{ questionId: bigint; optionIndex: bigint }>) => Promise<BackendVoteResponse>
   getAggregatedResults: (surveyId: string) => Promise<{
     totalVotes: bigint
     blockchainTrustPercentage: bigint
@@ -188,7 +198,9 @@ const IC_HOST =
     ? resolveLocalHost()
     : "https://ic0.app"
 
-let cachedActorPromise: Promise<BackendActor> | null = null
+let cachedAnonymousActorPromise: Promise<BackendActor> | null = null
+let cachedAuthenticatedActorPromise: Promise<BackendActor> | null = null
+let sessionIdentityPromise: Promise<ECDSAKeyIdentity> | null = null
 const frontendAssetActorCache = new Map<string, Promise<FrontendAssetActor>>()
 
 function sleep(ms: number) {
@@ -213,8 +225,9 @@ async function withTrustRetry<T>(operation: () => Promise<T>): Promise<T> {
     } catch (error) {
       lastError = error
 
-      // Fuerza re-inicializacion del actor para el siguiente intento.
-      cachedActorPromise = null
+      // Fuerza re-inicializacion de actores para el siguiente intento.
+      cachedAnonymousActorPromise = null
+      cachedAuthenticatedActorPromise = null
 
       if (!isTrustError(error) || attempt === 3) {
         break
@@ -228,16 +241,34 @@ async function withTrustRetry<T>(operation: () => Promise<T>): Promise<T> {
   throw lastError
 }
 
-async function getBackendActor(): Promise<BackendActor> {
+async function getSessionIdentity(): Promise<ECDSAKeyIdentity> {
+  if (!sessionIdentityPromise) {
+    sessionIdentityPromise = ECDSAKeyIdentity.generate({
+      extractable: false,
+      keyUsages: ["sign", "verify"],
+    }).catch((error) => {
+      sessionIdentityPromise = null
+      throw error
+    })
+  }
+
+  return sessionIdentityPromise
+}
+
+async function getBackendActor(authenticated = false): Promise<BackendActor> {
   if (!CANISTER_ID) {
     throw new Error("No se ha encontrado el CANISTER_ID_VOX_POPULI_BACKEND")
   }
 
-  if (!cachedActorPromise) {
-    cachedActorPromise = (async () => {
+  const actorCache = authenticated ? cachedAuthenticatedActorPromise : cachedAnonymousActorPromise
+
+  if (!actorCache) {
+    const actorPromise = (async () => {
+      const identity = authenticated ? await getSessionIdentity() : undefined
       const actor = createBackendActor(CANISTER_ID, {
         agentOptions: {
           host: IC_HOST,
+          ...(identity ? { identity: identity as any } : {}),
           // En local la verificacion criptografica de firmas de query puede fallar
           // en recargas directas por condiciones de replica/subnet keys.
           // Mantener en false solo fuera de la red ic.
@@ -248,12 +279,22 @@ async function getBackendActor(): Promise<BackendActor> {
       return actor as unknown as BackendActor
     })().catch((error) => {
       // Permite reintentar inicializacion en la siguiente llamada si algo fallo.
-      cachedActorPromise = null
+      if (authenticated) {
+        cachedAuthenticatedActorPromise = null
+      } else {
+        cachedAnonymousActorPromise = null
+      }
       throw error
     })
+
+    if (authenticated) {
+      cachedAuthenticatedActorPromise = actorPromise
+    } else {
+      cachedAnonymousActorPromise = actorPromise
+    }
   }
 
-  return cachedActorPromise
+  return authenticated ? cachedAuthenticatedActorPromise! : cachedAnonymousActorPromise!
 }
 
 async function getFrontendAssetActor(frontendCanisterId: string, options: FrontendAssetActorOptions = {}): Promise<FrontendAssetActor> {
@@ -334,12 +375,17 @@ export function buildAnswerSelections(answers: Record<number, string>, optionSet
 }
 
 export const canisterService = {
+  resetClientIdentity() {
+    sessionIdentityPromise = null
+    cachedAuthenticatedActorPromise = null
+  },
+
   async submitVote(payload: VotePayload): Promise<VoteResponse> {
     const result = await withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(true)
       return actor.submitVote(
         payload.surveyId,
-        payload.idToken,
+          payload.sessionId,
         toBackendAnswers(payload.answers),
       )
     })
@@ -351,9 +397,16 @@ export const canisterService = {
     }
   },
 
+  async authenticateWithGoogle(idToken: string): Promise<AuthSessionResult> {
+    return withTrustRetry(async () => {
+      const actor = await getBackendActor(true)
+      return actor.authenticateWithGoogle(idToken)
+    })
+  },
+
   async getAggregatedResults(surveyId: string): Promise<AggregatedResults> {
     const result = await withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.getAggregatedResults(surveyId)
     })
 
@@ -382,7 +435,7 @@ export const canisterService = {
 
   async getRawResponses(surveyId: string): Promise<RawResponse[]> {
     const responses = await withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.getRawResponses(surveyId)
     })
 
@@ -398,14 +451,14 @@ export const canisterService = {
 
   async getAuditData(): Promise<AuditData> {
     return withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.getAuditData()
     })
   },
 
   async getModuleHash(canisterId: Principal): Promise<string> {
     return withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.getModuleHash(canisterId)
     })
   },
@@ -432,28 +485,28 @@ export const canisterService = {
 
   async hasUserVoted(surveyId: string, anonymousId: string): Promise<boolean> {
     return withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.hasUserVoted(surveyId, anonymousId)
     })
   },
 
   async validateInstitutionalEmail(email: string): Promise<boolean> {
     return withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.validateInstitutionalEmail(email)
     })
   },
 
   async validateGoogleIdentity(claims: GoogleIdentityClaims, expectedAudience: string): Promise<boolean> {
     return withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.validateGoogleIdentity(claims, expectedAudience)
     })
   },
 
   async validateGoogleIdToken(idToken: string, expectedAudience: string): Promise<GoogleTokenValidation> {
     const result = await withTrustRetry(async () => {
-      const actor = await getBackendActor()
+      const actor = await getBackendActor(false)
       return actor.validateGoogleIdToken(idToken, expectedAudience)
     })
 

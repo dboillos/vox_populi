@@ -5,6 +5,8 @@ import Nat "mo:base/Nat";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
+import HashMap "mo:base/HashMap";
+import Nat8 "mo:base/Nat8";
 
 import AuditService "./audit/audit_service";
 import IdentityRegistryService "./auth/identity_registry_service";
@@ -44,6 +46,7 @@ persistent actor Self {
   public type AuditData = Types.AuditData;
   public type GoogleIdentityClaims = Types.GoogleIdentityClaims;
   public type GoogleTokenValidation = Types.GoogleTokenValidation;
+    public type AuthSessionResult = Types.AuthSessionResult;
 
   // -----------------------------
   // Estado persistente del actor
@@ -79,9 +82,57 @@ persistent actor Self {
   var identityRegistryEntries : List.List<(Text, Text)> = List.nil<(Text, Text)>();
 
   // Indices en memoria para consultas O(1).
+
+    // Sesiones de autenticacion de un solo uso: (sessionId, voterId, expiresAtNs, usado).
+    // Se persiste como lista estable; el mapa transient permite lookup O(1) en runtime.
+    transient var sessionStableEntries : List.List<(Text, Text, Int, Bool)> = List.nil<(Text, Text, Int, Bool)>();
+
+
+    // Duracion de sesion: 30 minutos en nanosegundos.
+    transient let SESSION_DURATION_NS : Int = 30 * 60 * 1_000_000_000;
+
   transient var voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
   transient var identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
   transient var surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
+
+    // Mapa transient de sesiones activas (sessionId -> (voterId, expiresAtNs, usado)).
+    // Se reconstruye desde sessionStableEntries en cada arranque/upgrade.
+    // -----------------------------------------------
+    // Helpers internos de sesion
+    // -----------------------------------------------
+
+    func buildSessionMapFromEntries(
+      entries : List.List<(Text, Text, Int, Bool)>
+    ) : HashMap.HashMap<Text, (Text, Int, Bool)> {
+      let map = HashMap.HashMap<Text, (Text, Int, Bool)>(16, Text.equal, Text.hash);
+      var current = entries;
+      label iter loop {
+        switch current {
+          case null { break iter };
+          case (?(head, tail)) {
+            let (sid, vid, exp, used) = head;
+            map.put(sid, (vid, exp, used));
+            current := tail;
+          };
+        };
+      };
+      map
+    };
+
+    func byteToHex(b : Nat8) : Text {
+      let digits = ["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"];
+      digits[Nat8.toNat(b) / 16] # digits[Nat8.toNat(b) % 16]
+    };
+
+    func blobToHex(b : Blob) : Text {
+      var result = "";
+      for (byte in b.vals()) {
+        result := result # byteToHex(byte);
+      };
+      result
+    };
+
+    transient var sessionMap : HashMap.HashMap<Text, (Text, Int, Bool)> = buildSessionMapFromEntries(sessionStableEntries);
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
   // Para que funcione, este canister debe estar en su propia lista de controladores:
@@ -194,57 +245,155 @@ persistent actor Self {
   // ---------------------------------
 
   // API CONTRACT: submitVote (update)
-  // Parametros:
-  // - surveyId: identificador logico de la encuesta.
-  // - idToken: JWT emitido por Google Identity Services.
-  // - answers: lista normalizada de respuestas (questionId, optionIndex).
-  // Precondiciones:
-  // - surveyId no vacio.
-  // - answers no vacio.
-  // - sin preguntas repetidas dentro del mismo voto.
-  // - cada questionId/optionIndex dentro de rangos validos.
-  // Postcondiciones (success = true):
-  // - el voto queda persistido en storedVotes.
-  // - nextVoteId se incrementa en 1.
-  // - se devuelve voteId con formato "vote-<n>".
-  // Errores funcionales (success = false):
-  // - id_token invalido o expirado.
-  // - encuesta obligatoria, respuestas vacias, preguntas repetidas,
-  //   respuestas fuera de rango o voto duplicado.
-  // Complejidad aproximada: O(n), donde n=answers.
-  // Nota: el bloqueo de duplicados usa indice en memoria O(1) promedio.
-  // Registra un voto con autenticacion OIDC obligatoria.
-  // Flujo resumido:
-  // 1) valida id_token de Google y obtiene voterId pseudonimo estable.
-  // 2) valida surveyId y payload de respuestas.
-  // 3) valida duplicados y persiste.
-  public shared ({ caller }) func submitVote(
-    surveyId : Text,
-    idToken : Text,
-    answers : [AnswerSelection],
-  ) : async VoteResponse {
-    let validation = await validateAndAttachIdentity(idToken, expectedGoogleAudience);
-    if (not validation.isValid) {
-      return {
-        success = false;
-        message = "Autenticacion invalida: " # validation.reason;
-        voteId = null;
+    // API CONTRACT: authenticateWithGoogle (update)
+    // Parametros:
+    // - idToken: JWT de Google Identity Services obtenido en cliente.
+    // Postcondiciones (success = true):
+    // - Se valida el id_token contra Google tokeninfo.
+    // - Se deriva el voterId pseudonimo (hash(email + salt)).
+    // - Se genera un sessionId opaco de un solo uso (32 bytes aleatorios en hex).
+    // - La sesion caduca en SESSION_DURATION_NS nanosegundos.
+    // Seguridad:
+    // - El id_token de Google NUNCA se persiste ni se retransmite a cliente de vuelta.
+    // - Solo se retorna el sessionId opaco + voterId pseudonimo para checks de UX.
+    public shared ({ caller }) func authenticateWithGoogle(idToken : Text) : async AuthSessionResult {
+      if (Principal.toText(caller) == "2vxsx-fae") {
+        return {
+          success = false;
+          sessionId = "";
+          expiresAt = 0;
+          voterId = "";
+          reason = "Se requiere una identidad ICP firmada para autenticarse";
+        };
       };
-    };
 
-    let resolvedVoterId =
-      switch (validation.voterId) {
-        case (?voterId) { voterId };
+      let validation = await validateAndAttachIdentity(idToken, expectedGoogleAudience);
+      if (not validation.isValid) {
+        return {
+          success = false;
+          sessionId = "";
+          expiresAt = 0;
+          voterId = "";
+          reason = validation.reason;
+        };
+      };
+
+      let resolvedVoterId = switch (validation.voterId) {
+        case (?vid) { vid };
         case null {
           return {
             success = false;
-            message = "No se pudo derivar identidad de voto";
-            voteId = null;
+            sessionId = "";
+            expiresAt = 0;
+            voterId = "";
+            reason = "No se pudo derivar identidad de voto";
           };
         };
       };
 
-    let result = VoteRuntimeService.submitVoteWithIndexes(
+      // Generar sessionId criptograficamente aleatorio (32 bytes = 64 chars hex).
+      let randomBlob = await IC.raw_rand();
+      let callerText = Principal.toText(caller);
+      let sessionId = callerText # "." # blobToHex(randomBlob);
+      let nowNs = Time.now();
+      let expiresAt = nowNs + SESSION_DURATION_NS;
+
+      // Persistir sesion en lista estable y mapa transient.
+      sessionStableEntries := List.push(
+        (sessionId, resolvedVoterId, expiresAt, false),
+        sessionStableEntries
+      );
+      sessionMap.put(sessionId, (resolvedVoterId, expiresAt, false));
+
+      {
+        success = true;
+        sessionId;
+        expiresAt;
+        voterId = resolvedVoterId;
+        reason = "";
+      }
+    };
+
+    // Registra un voto autenticado mediante sessionId de un solo uso.
+    // API CONTRACT: submitVote (update)
+    // Parametros:
+    // - surveyId: identificador logico de la encuesta.
+    // - sessionId: sesion opaca de un solo uso emitida por authenticateWithGoogle.
+    // - answers: lista normalizada de respuestas (questionId, optionIndex).
+    // Errores funcionales (success = false):
+    // - sesion no encontrada, ya usada o expirada.
+    // - encuesta obligatoria, respuestas vacias, preguntas repetidas,
+    //   respuestas fuera de rango o voto duplicado.
+    // Flujo resumido:
+    // 1) busca y valida la sesion (no expirada, no usada).
+    // 2) marca la sesion como usada de forma atomica.
+    // 3) valida surveyId y payload de respuestas.
+    // 4) valida duplicados y persiste.
+    public shared ({ caller }) func submitVote(
+      surveyId : Text,
+      sessionId : Text,
+      answers : [AnswerSelection],
+    ) : async VoteResponse {
+      if (Principal.toText(caller) == "2vxsx-fae") {
+        return {
+          success = false;
+          message = "Autenticacion invalida: se requiere una identidad ICP firmada";
+          voteId = null;
+        };
+      };
+
+      let nowNs = Time.now();
+      let callerText = Principal.toText(caller);
+
+      // Buscar sesion en mapa transient O(1).
+      let (resolvedVoterId) = switch (sessionMap.get(sessionId)) {
+        case null {
+          return {
+            success = false;
+            message = "Autenticacion invalida: sesion no encontrada o invalida";
+            voteId = null;
+          };
+        };
+        case (?(voterId, expiresAt, used)) {
+          let expectedPrefix = callerText # ".";
+          if (Text.startsWith(sessionId, #text expectedPrefix)) {
+            // Sesion emitida con binding de principal ICP actual.
+          } else {
+            return {
+              success = false;
+              message = "Autenticacion invalida: la sesion no pertenece a este caller ICP";
+              voteId = null;
+            };
+          };
+
+          if (used) {
+            return {
+              success = false;
+              message = "Autenticacion invalida: sesion ya utilizada";
+              voteId = null;
+            };
+          };
+          if (nowNs > expiresAt) {
+            return {
+              success = false;
+              message = "Autenticacion invalida: sesion expirada";
+              voteId = null;
+            };
+          };
+          // Marcar sesion como usada (tanto en mapa transient como en lista estable).
+          sessionMap.put(sessionId, (voterId, expiresAt, true));
+          sessionStableEntries := List.map<(Text, Text, Int, Bool), (Text, Text, Int, Bool)>(
+            sessionStableEntries,
+            func (entry : (Text, Text, Int, Bool)) : (Text, Text, Int, Bool) {
+              let (sid, vid, exp, u) = entry;
+              if (sid == sessionId) { (sid, vid, exp, true) } else (sid, vid, exp, u)
+            }
+          );
+          voterId
+        };
+      };
+
+      let result = VoteRuntimeService.submitVoteWithIndexes(
       voteLookup,
       surveyVotesCache,
       storedVotes,

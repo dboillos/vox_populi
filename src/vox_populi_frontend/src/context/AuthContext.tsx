@@ -1,16 +1,14 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react"
+import { canisterService } from "@/lib/canister-service"
 
 const SESSION_KEY = "voxpopuli_session"
-const SESSION_DURATION_DAYS = 30
-
 interface AuthContextType {
   isLoggedIn: boolean      // El nombre que ya tenías
   isAuthenticated: boolean // Añadimos este alias para que no falle la Landing
   isInitializing: boolean
-  userEmail: string | null
   userVoterId: string | null
-  userIdToken: string | null
-  login: (email: string, voterId: string, idToken: string) => void
+  userSessionId: string | null
+  login: (sessionId: string, voterId: string, expiresAt: number) => void
   logout: () => void
 }
 
@@ -18,9 +16,8 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [userVoterId, setUserVoterId] = useState<string | null>(null)
-  const [userIdToken, setUserIdToken] = useState<string | null>(null)
+  const [userSessionId, setUserSessionId] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
 
   // Creamos la propiedad derivada
@@ -28,10 +25,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY)
+    canisterService.resetClientIdentity()
     setIsLoggedIn(false)
-    setUserEmail(null)
     setUserVoterId(null)
-    setUserIdToken(null)
+    setUserSessionId(null)
   }, [])
 
   useEffect(() => {
@@ -41,9 +38,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const session = JSON.parse(stored)
         if (Date.now() < session.expiresAt) {
           setIsLoggedIn(true)
-          setUserEmail(session.email)
           setUserVoterId(session.voterId ?? null)
-          setUserIdToken(session.idToken ?? null)
+          setUserSessionId(session.sessionId ?? null)
         } else {
           logout()
         }
@@ -54,13 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsInitializing(false)
   }, [logout])
 
-  const login = (email: string, voterId: string, idToken: string) => {
-    const expiresAt = Date.now() + SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ email, voterId, idToken, expiresAt }))
+  const login = (sessionId: string, voterId: string, expiresAt: number) => {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, voterId, expiresAt }))
     setIsLoggedIn(true)
-    setUserEmail(email)
     setUserVoterId(voterId)
-    setUserIdToken(idToken)
+    setUserSessionId(sessionId)
   }
 
   return (
@@ -68,9 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoggedIn, 
       isAuthenticated, // Lo pasamos aquí
       isInitializing, 
-      userEmail, 
       userVoterId,
-      userIdToken,
+      userSessionId,
       login, 
       logout 
     }}>

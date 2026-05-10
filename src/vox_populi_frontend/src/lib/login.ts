@@ -25,7 +25,8 @@ export class LoginError extends Error {
 export type LoginIdentity = {
   email: string
   voterId: string
-  idToken: string
+    sessionId: string
+    expiresAt: number
 }
 
 type GoogleCredentialResponse = {
@@ -411,26 +412,20 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
   if (idToken.split(".").length !== 3) {
     throw new LoginError("google_auth_failed", "Formato de id_token inválido")
   }
-  // 2) Delegar validación de seguridad al backend/canister.
-  let validation
+  // 2) Intercambiar id_token por sessionId opaco en backend (sin persistir JWT).
+  let sessionResult
   try {
-    validation = await canisterService.validateGoogleIdToken(idToken, GOOGLE_CLIENT_ID)
+    sessionResult = await canisterService.authenticateWithGoogle(idToken)
   } catch (error) {
     throw formatBackendLoginError(error)
   }
 
-  if (!validation.isValid || !validation.email || !validation.voterId) {
-    if (validation.reason.includes("dominio")) {
-      throw new LoginError("domain_not_allowed", validation.reason)
+  if (!sessionResult.success || !sessionResult.voterId) {
+    if ((sessionResult.reason || "").includes("dominio")) {
+      throw new LoginError("domain_not_allowed", sessionResult.reason)
     }
 
-    throw new LoginError("backend_validation_failed", validation.reason)
-  }
-
-  const normalizedEmail = normalizeEmail(validation.email)
-  // Doble check defensivo en frontend por UX; la validación fuerte ya ocurre en backend.
-  if (!isAllowedDomain(normalizedEmail)) {
-    throw new LoginError("domain_not_allowed", "El dominio del correo no pertenece a UOC")
+    throw new LoginError("backend_validation_failed", sessionResult.reason || "Error de autenticación")
   }
 
   // Modelo de anonimato :
@@ -441,8 +436,9 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
   // - El voterId publicado no deriva del email en frontend.
 
   return {
-    email: normalizedEmail,
-    voterId: validation.voterId,
-    idToken,
+    email: "",
+    voterId: sessionResult.voterId,
+    sessionId: sessionResult.sessionId,
+    expiresAt: Number(sessionResult.expiresAt / BigInt(1_000_000)),
   }
 }

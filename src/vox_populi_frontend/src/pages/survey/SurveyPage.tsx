@@ -21,7 +21,7 @@ interface SurveyPageProps {
 // CORRECCIÓN: Nombre de la función cambiado de SurveySection a SurveyPage
 export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
   const { locale, t } = useLocale()
-  const { userIdToken, logout } = useAuth()
+    const { userSessionId, logout } = useAuth()
   const surveyQuestions = getTranslatedQuestions(locale)
   const optionSets = getQuestionOptionsByLocale(locale)
 
@@ -101,7 +101,7 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
       const progressTimerId = startVoteProgressSimulation()
 
       try {
-        if (!userIdToken) {
+        if (!userSessionId) {
           clearInterval(progressTimerId)
           setVoteProgressStep(0)
           markVoteProgressError(t.voteProgress.sessionExpired)
@@ -114,7 +114,7 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
         const normalizedAnswers = buildAnswerSelections(answers, optionSets)
         const result = await canisterService.submitVote({
           surveyId: "ai-uoc-2024",
-          idToken: userIdToken,
+          sessionId: userSessionId,
           answers: normalizedAnswers,
         })
 
@@ -150,7 +150,7 @@ export function SurveyPage({ onComplete, onBack }: SurveyPageProps) {
         setIsSubmitting(false)
       }
     }
-  }, [answers, currentQuestion, currentQuestionIndex, forceReloginForVote, markVoteProgressError, onComplete, openVoteProgress, optionSets, startVoteProgressSimulation, surveyQuestions, t.voteProgress.sessionExpired, totalQuestions, userIdToken])
+  }, [answers, currentQuestion, currentQuestionIndex, forceReloginForVote, markVoteProgressError, onComplete, openVoteProgress, optionSets, startVoteProgressSimulation, surveyQuestions, t.voteProgress.sessionExpired, totalQuestions, userSessionId])
 
   const handlePrevious = useCallback(() => {
     if (currentQuestionIndex > 0) {

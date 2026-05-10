@@ -93,6 +93,16 @@ module {
     reason : Text;
   };
 
+    // Resultado de autenticacion con Google que devuelve una sesion opaca.
+    // El sessionId es de un solo uso: caduca tras submitVote o al expirar.
+    public type AuthSessionResult = {
+      success : Bool;
+      sessionId : Text;
+      expiresAt : Int;   // epoch en nanosegundos
+      voterId : Text;    // pseudonimo para checks de UX (hasUserVoted)
+      reason : Text;     // mensaje de error si success = false
+    };
+
   // Estructura persistida interna.
   // Diferencia importante con RawResponse:
   // - StoredVote guarda voteId interno y surveyId.
