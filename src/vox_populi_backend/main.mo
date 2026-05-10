@@ -31,29 +31,6 @@ import Validation "./shared/validation";
 persistent actor Self {
   let MIGRATION_ADMIN : Principal = Principal.fromText("tn77x-osmtr-gtg2m-qzwxl-ptenl-jfezc-im5h2-7t556-tfi26-j5ljr-kqe");
 
-  // Compatibilidad de upgrade: formato histórico de voto estable con timestamp.
-  // Solo se conserva para que upgrades futuros lean memoria antigua sin trap.
-  type LegacyStoredVote = {
-    voteId : Nat;
-    surveyId : Text;
-    voterId : Text;
-    timestamp : Nat;
-    answers : [AnswerSelection];
-  };
-
-  func migrateLegacyVote(vote : LegacyStoredVote) : Types.StoredVote {
-    {
-      voteId = vote.voteId;
-      surveyId = vote.surveyId;
-      voterId = vote.voterId;
-      answers = vote.answers;
-    };
-  };
-
-  func migrateLegacyVotes(votes : List.List<LegacyStoredVote>) : List.List<Types.StoredVote> {
-    List.map<LegacyStoredVote, Types.StoredVote>(votes, migrateLegacyVote);
-  };
-
   public type MigrationSnapshot = {
     nextVoteId : Nat;
     backendEmailSalt : Text;
@@ -86,10 +63,8 @@ persistent actor Self {
 
   // Contador incremental para generar identificadores de voto legibles.
   var nextVoteId : Nat = 1;
-  // Estado legado: se conserva por compatibilidad de memoria estable.
-  var storedVotes : List.List<LegacyStoredVote> = List.nil<LegacyStoredVote>();
-  // Estado activo sin timestamp, usado por la lógica funcional actual.
-  var storedVotesV2 : List.List<Types.StoredVote> = migrateLegacyVotes(storedVotes);
+  // Almacen principal de votos en lista enlazada (sin timestamp en estado estable).
+  var storedVotes : List.List<Types.StoredVote> = List.nil<Types.StoredVote>();
   // Version de la logica de negocio del cuestionario.
   // Se expone por auditoria en getAuditData.
   let surveyCodeVersion : Text = "1.0.0";
@@ -118,12 +93,12 @@ persistent actor Self {
   // Indices en memoria para consultas O(1).
   transient var voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
   transient var identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
-  transient var surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotesV2);
+  transient var surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
 
   func rebuildTransientIndexes() {
     voteLookup := VoteRuntimeService.buildVoteLookup(voteLookupEntries);
     identityRegistry := IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
-    surveyVotesCache := VoteRuntimeService.buildSurveyVotesCache(storedVotesV2);
+    surveyVotesCache := VoteRuntimeService.buildSurveyVotesCache(storedVotes);
   };
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
@@ -290,7 +265,7 @@ persistent actor Self {
     let result = VoteRuntimeService.submitVoteWithIndexes(
       voteLookup,
       surveyVotesCache,
-      storedVotesV2,
+      storedVotes,
       nextVoteId,
       voteLookupEntries,
       surveyId,
@@ -300,7 +275,7 @@ persistent actor Self {
       questionOptionCounts,
     );
 
-    storedVotesV2 := result.storedVotes;
+    storedVotes := result.storedVotes;
     nextVoteId := result.nextVoteId;
     voteLookupEntries := result.voteLookupEntries;
 
@@ -437,7 +412,7 @@ persistent actor Self {
       nextVoteId = nextVoteId;
       backendEmailSalt = backendEmailSalt;
       identityRegistryEntries = List.toArray(identityRegistryEntries);
-      votes = List.toArray(storedVotesV2);
+      votes = List.toArray(storedVotes);
     };
   };
 
@@ -449,7 +424,7 @@ persistent actor Self {
     nextVoteId := snapshot.nextVoteId;
     backendEmailSalt := snapshot.backendEmailSalt;
     identityRegistryEntries := List.fromArray(snapshot.identityRegistryEntries);
-    storedVotesV2 := List.fromArray(snapshot.votes);
+    storedVotes := List.fromArray(snapshot.votes);
 
     var rebuiltEntries = List.nil<(Text, Text, Nat)>();
     for (vote in snapshot.votes.vals()) {
