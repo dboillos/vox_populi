@@ -5,7 +5,6 @@ import Nat "mo:base/Nat";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
 import Time "mo:base/Time";
-import Prim "mo:prim";
 
 import AuditService "./audit/audit_service";
 import IdentityRegistryService "./auth/identity_registry_service";
@@ -29,21 +28,6 @@ import Validation "./shared/validation";
 // - Reducir acoplamiento entre endpoints y calculos.
 // - Facilitar pruebas y mantenimiento por responsabilidades.
 persistent actor Self {
-  let MIGRATION_ADMIN : Principal = Principal.fromText("tn77x-osmtr-gtg2m-qzwxl-ptenl-jfezc-im5h2-7t556-tfi26-j5ljr-kqe");
-
-  public type MigrationSnapshot = {
-    nextVoteId : Nat;
-    backendEmailSalt : Text;
-    identityRegistryEntries : [(Text, Text)];
-    votes : [Types.StoredVote];
-  };
-
-  func assertMigrationAdmin(caller : Principal) {
-    if (caller != MIGRATION_ADMIN) {
-      Prim.trap("Acceso denegado: endpoint reservado a migracion administrada");
-    };
-  };
-
   // Reexport de tipos para mantener estable el contrato Candid.
   // Esto garantiza que las declaraciones TypeScript sigan alineadas.
   public type AnswerSelection = Types.AnswerSelection;
@@ -94,12 +78,6 @@ persistent actor Self {
   transient var voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
   transient var identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
   transient var surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
-
-  func rebuildTransientIndexes() {
-    voteLookup := VoteRuntimeService.buildVoteLookup(voteLookupEntries);
-    identityRegistry := IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
-    surveyVotesCache := VoteRuntimeService.buildSurveyVotesCache(storedVotes);
-  };
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
   // Para que funcione, este canister debe estar en su propia lista de controladores:
@@ -402,38 +380,6 @@ persistent actor Self {
   //   Para el frontend: dfx canister update-settings vox_populi_frontend --add-controller $(dfx canister id vox_populi_backend)
   public func getModuleHash(canisterId : Principal) : async Text {
     await AuditService.getModuleHash(IC, canisterId);
-  };
-
-  // API CONTRACT: exportMigrationSnapshot (query)
-  // Devuelve un snapshot completo para migracion externa sin perdida de votos.
-  public shared query ({ caller }) func exportMigrationSnapshot() : async MigrationSnapshot {
-    assertMigrationAdmin(caller);
-    {
-      nextVoteId = nextVoteId;
-      backendEmailSalt = backendEmailSalt;
-      identityRegistryEntries = List.toArray(identityRegistryEntries);
-      votes = List.toArray(storedVotes);
-    };
-  };
-
-  // API CONTRACT: importMigrationSnapshot (update)
-  // Restaura snapshot completo tras reinstall y reconstruye indices transient.
-  public shared ({ caller }) func importMigrationSnapshot(snapshot : MigrationSnapshot) : async Text {
-    assertMigrationAdmin(caller);
-
-    nextVoteId := snapshot.nextVoteId;
-    backendEmailSalt := snapshot.backendEmailSalt;
-    identityRegistryEntries := List.fromArray(snapshot.identityRegistryEntries);
-    storedVotes := List.fromArray(snapshot.votes);
-
-    var rebuiltEntries = List.nil<(Text, Text, Nat)>();
-    for (vote in snapshot.votes.vals()) {
-      rebuiltEntries := List.push((vote.surveyId, vote.voterId, vote.voteId), rebuiltEntries);
-    };
-    voteLookupEntries := rebuiltEntries;
-
-    rebuildTransientIndexes();
-    "snapshot importado correctamente";
   };
 
   // API CONTRACT: greet (query)
