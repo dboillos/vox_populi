@@ -28,6 +28,10 @@ import Validation "./shared/validation";
 // - Reducir acoplamiento entre endpoints y calculos.
 // - Facilitar pruebas y mantenimiento por responsabilidades.
 persistent actor Self {
+  // Campo persistente conservado por compatibilidad de layout en upgrades.
+  // No se usa en la API final, pero evita ruptura de memoria estable (IC0503).
+  let MIGRATION_ADMIN : Principal = Principal.fromText("tn77x-osmtr-gtg2m-qzwxl-ptenl-jfezc-im5h2-7t556-tfi26-j5ljr-kqe");
+
   // Reexport de tipos para mantener estable el contrato Candid.
   // Esto garantiza que las declaraciones TypeScript sigan alineadas.
   public type AnswerSelection = Types.AnswerSelection;
