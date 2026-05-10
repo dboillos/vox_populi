@@ -16,7 +16,6 @@ import ICHttpTypes "./infrastructure/ic_http_types";
 import SurveyConfig "./shared/survey_config";
 import Types "./shared/types";
 import VoteRuntimeService "./vote/vote_runtime_service";
-import Validation "./shared/validation";
 
 // Actor persistente del dominio de votaciones.
 //
@@ -431,44 +430,6 @@ persistent actor Self {
   // Se usa principalmente para UX (bloquear o avisar antes de entrar a votar).
   public query func hasUserVoted(surveyId : Text, voterId : Text) : async Bool {
     VoteRuntimeService.hasUserVoted(voteLookup, surveyId, voterId);
-  };
-
-  // API CONTRACT: validateInstitutionalEmail (query)
-  // Parametros:
-  // - email: correo de la cuenta autenticada por proveedor OIDC.
-  // Resultado:
-  // - true cuando el dominio es @uoc.edu.
-  // Notas:
-  // - Esta validacion es la primera capa de backend para login institucional.
-  // - La validacion criptografica completa del id_token se implementara en la siguiente fase.
-  public query func validateInstitutionalEmail(email : Text) : async Bool {
-    Validation.isUocInstitutionalEmail(email);
-  };
-
-  // API CONTRACT: validateGoogleIdentity (query)
-  // Parametros:
-  // - claims: claims minimos extraidos del id_token JWT en frontend.
-  // - expectedAudience: client_id de Google esperado por backend.
-  // Resultado:
-  // - true cuando email/aud/iss/exp son consistentes con login institucional UOC.
-  // Nota de seguridad:
-  // - Esta fase valida semantica de claims.
-  // - La validacion criptografica de firma JWT se incorporara en la siguiente iteracion.
-  public query func validateGoogleIdentity(claims : GoogleIdentityClaims, expectedAudience : Text) : async Bool {
-    AuthService.validateGoogleIdentity(claims, expectedAudience, Int.abs(Time.now() / 1_000_000_000));
-  };
-
-  // API CONTRACT: validateGoogleIdToken (update)
-  // Parametros:
-  // - idToken: JWT emitido por Google Identity Services.
-  // - expectedAudience: client_id OAuth configurado en el frontend.
-  // Resultado:
-  // - GoogleTokenValidation con estado final, email validado (si aplica) y motivo.
-  // Seguridad:
-  // - El backend consulta tokeninfo de Google para validar token firmado por Google.
-  // - Se valida aud, iss, exp, email_verified y dominio @uoc.edu.
-  public func validateGoogleIdToken(idToken : Text, expectedAudience : Text) : async GoogleTokenValidation {
-    await validateAndAttachIdentity(idToken, expectedAudience);
   };
 
   // API CONTRACT: getAggregatedResults (query)
