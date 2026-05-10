@@ -6,9 +6,8 @@ interface AuthContextType {
   isLoggedIn: boolean      // El nombre que ya tenías
   isAuthenticated: boolean // Añadimos este alias para que no falle la Landing
   isInitializing: boolean
-  userVoterId: string | null
   userSessionId: string | null
-  login: (sessionId: string, voterId: string, expiresAt: number) => void
+  login: (sessionId: string, expiresAt: number) => void
   logout: () => void
 }
 
@@ -16,7 +15,6 @@ const AuthContext = createContext<AuthContextType | null>(null)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [userVoterId, setUserVoterId] = useState<string | null>(null)
   const [userSessionId, setUserSessionId] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(true)
 
@@ -27,7 +25,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem(SESSION_KEY)
     canisterService.resetClientIdentity()
     setIsLoggedIn(false)
-    setUserVoterId(null)
     setUserSessionId(null)
   }, [])
 
@@ -38,7 +35,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const session = JSON.parse(stored)
         if (Date.now() < session.expiresAt) {
           setIsLoggedIn(true)
-          setUserVoterId(session.voterId ?? null)
           setUserSessionId(session.sessionId ?? null)
         } else {
           logout()
@@ -50,10 +46,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsInitializing(false)
   }, [logout])
 
-  const login = (sessionId: string, voterId: string, expiresAt: number) => {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, voterId, expiresAt }))
+  const login = (sessionId: string, expiresAt: number) => {
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, expiresAt }))
     setIsLoggedIn(true)
-    setUserVoterId(voterId)
     setUserSessionId(sessionId)
   }
 
@@ -62,7 +57,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoggedIn, 
       isAuthenticated, // Lo pasamos aquí
       isInitializing, 
-      userVoterId,
       userSessionId,
       login, 
       logout 

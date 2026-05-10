@@ -87,7 +87,6 @@ function buildQuestionDistribution(rawResponses: RawResponse[], questionId: numb
 function generateCSV(rawResponses: RawResponse[], questionOptions: Record<number, string[]>): string {
   const headers = [
     "Numero",
-    "Voter ID",
     "Pregunta 1 - Herramienta IA",
     "Pregunta 2 - Fase académica",
     "Pregunta 3 - Horas ahorradas",
@@ -113,7 +112,6 @@ function generateCSV(rawResponses: RawResponse[], questionOptions: Record<number
   
   const rows = rawResponses.map((response) => [
     response.numero,
-    response.voterId,
     resolveAnswer(response, 1),
     resolveAnswer(response, 2),
     resolveAnswer(response, 3),

@@ -24,7 +24,6 @@ export class LoginError extends Error {
 
 export type LoginIdentity = {
   email: string
-  voterId: string
     sessionId: string
     expiresAt: number
 }
@@ -420,7 +419,7 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
     throw formatBackendLoginError(error)
   }
 
-  if (!sessionResult.success || !sessionResult.voterId) {
+  if (!sessionResult.success) {
     if ((sessionResult.reason || "").includes("dominio")) {
       throw new LoginError("domain_not_allowed", sessionResult.reason)
     }
@@ -428,16 +427,12 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
     throw new LoginError("backend_validation_failed", sessionResult.reason || "Error de autenticación")
   }
 
-  // Modelo de anonimato :
-  // - Aquí devolvemos email validado para mantener sesión de usuario.
-  // - En el momento de votar, se usa el voterId pseudónimo emitido por backend
-  //   tras validar el id_token de Google.
-  // - El backend/blockchain persiste voterId, no el email.
-  // - El voterId publicado no deriva del email en frontend.
+  // Modelo de minimización:
+  // - El navegador solo conserva sessionId opaco y expiración.
+  // - voterId permanece en backend y no se expone al cliente.
 
   return {
     email: "",
-    voterId: sessionResult.voterId,
     sessionId: sessionResult.sessionId,
     expiresAt: Number(sessionResult.expiresAt / BigInt(1_000_000)),
   }

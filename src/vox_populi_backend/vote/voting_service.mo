@@ -192,7 +192,6 @@ module {
       let vote = votes[index];
       {
         numero = index + 1;
-        voterId = vote.voterId;
         answers = vote.answers;
       };
     });

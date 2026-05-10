@@ -64,7 +64,6 @@ module {
   // Respuesta cruda para exportacion y trazabilidad.
   public type RawResponse = {
     numero : Nat;
-    voterId : Text;
     answers : [AnswerSelection];
   };
 
@@ -99,7 +98,6 @@ module {
       success : Bool;
       sessionId : Text;
       expiresAt : Int;   // epoch en nanosegundos
-      voterId : Text;    // pseudonimo para checks de UX (hasUserVoted)
       reason : Text;     // mensaje de error si success = false
     };
 

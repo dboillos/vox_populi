@@ -131,6 +131,16 @@ persistent actor Self {
       result
     };
 
+    func resolveCallerVoterIdFromSessions(callerText : Text) : ?Text {
+      let expectedPrefix = callerText # ".";
+      for ((sid, vid, _, _) in List.toIter(sessionStableEntries)) {
+        if (Text.startsWith(sid, #text expectedPrefix)) {
+          return ?vid;
+        };
+      };
+      null
+    };
+
     transient var sessionMap : HashMap.HashMap<Text, (Text, Int, Bool)> = buildSessionMapFromEntries(sessionStableEntries);
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
@@ -254,14 +264,13 @@ persistent actor Self {
     // - La sesion caduca en SESSION_DURATION_NS nanosegundos.
     // Seguridad:
     // - El id_token de Google NUNCA se persiste ni se retransmite a cliente de vuelta.
-    // - Solo se retorna el sessionId opaco + voterId pseudonimo para checks de UX.
+    // - Solo se retorna el sessionId opaco y su expiracion.
     public shared ({ caller }) func authenticateWithGoogle(idToken : Text) : async AuthSessionResult {
       if (Principal.toText(caller) == "2vxsx-fae") {
         return {
           success = false;
           sessionId = "";
           expiresAt = 0;
-          voterId = "";
           reason = "Se requiere una identidad ICP firmada para autenticarse";
         };
       };
@@ -272,7 +281,6 @@ persistent actor Self {
           success = false;
           sessionId = "";
           expiresAt = 0;
-          voterId = "";
           reason = validation.reason;
         };
       };
@@ -284,7 +292,6 @@ persistent actor Self {
             success = false;
             sessionId = "";
             expiresAt = 0;
-            voterId = "";
             reason = "No se pudo derivar identidad de voto";
           };
         };
@@ -308,7 +315,6 @@ persistent actor Self {
         success = true;
         sessionId;
         expiresAt;
-        voterId = resolvedVoterId;
         reason = "";
       }
     };
@@ -416,20 +422,28 @@ persistent actor Self {
   // Endpoints de lectura (queries)
   // -----------------------------
 
-  // API CONTRACT: hasUserVoted (query)
+  // API CONTRACT: hasCallerVoted (query)
   // Parametros:
   // - surveyId: identificador de encuesta.
-  // - voterId: identificador anonimo del votante.
   // Resultado:
-  // - true si existe al menos un voto con esa pareja (surveyId, voterId).
-  // - false en caso contrario.
-  // Uso tipico:
-  // - validaciones de UX antes de iniciar el formulario de votacion.
-  // Complejidad aproximada: O(1) promedio (indice runtime de duplicados).
-  // Consulta booleana para detectar si un identificador ya voto en una encuesta.
-  // Se usa principalmente para UX (bloquear o avisar antes de entrar a votar).
-  public query func hasUserVoted(surveyId : Text, voterId : Text) : async Bool {
-    VoteRuntimeService.hasUserVoted(voteLookup, surveyId, voterId);
+  // - true si el caller (identidad ICP firmante) ya voto en esa encuesta.
+  // - false en caso contrario o si no hay identidad asociada en sesion.
+  // Nota:
+  // - evita exponer voterId al navegador para checks de UX.
+  public shared query ({ caller }) func hasCallerVoted(surveyId : Text) : async Bool {
+    if (Principal.toText(caller) == "2vxsx-fae") {
+      return false;
+    };
+
+    let callerText = Principal.toText(caller);
+    switch (resolveCallerVoterIdFromSessions(callerText)) {
+      case (?resolvedVoterId) {
+        VoteRuntimeService.hasUserVoted(voteLookup, surveyId, resolvedVoterId);
+      };
+      case null {
+        false;
+      };
+    };
   };
 
   // API CONTRACT: getAggregatedResults (query)

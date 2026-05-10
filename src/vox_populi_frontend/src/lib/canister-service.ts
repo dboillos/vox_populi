@@ -24,7 +24,6 @@ export interface AuthSessionResult {
   success: boolean
   sessionId: string
   expiresAt: bigint
-  voterId: string
   reason: string
 }
 
@@ -45,7 +44,6 @@ export interface AggregatedResults {
 
 export interface RawResponse {
   numero: number
-  voterId: string
   answers: AnswerSelection[]
 }
 
@@ -68,7 +66,7 @@ interface BackendVoteResponse {
 }
 
 interface BackendActor {
-  authenticateWithGoogle: (idToken: string) => Promise<{ success: boolean; sessionId: string; expiresAt: bigint; voterId: string; reason: string }>
+  authenticateWithGoogle: (idToken: string) => Promise<{ success: boolean; sessionId: string; expiresAt: bigint; reason: string }>
   submitVote: (surveyId: string, sessionId: string, answers: Array<{ questionId: bigint; optionIndex: bigint }>) => Promise<BackendVoteResponse>
   getAggregatedResults: (surveyId: string) => Promise<{
     totalVotes: bigint
@@ -81,12 +79,11 @@ interface BackendActor {
   }>
   getRawResponses: (surveyId: string) => Promise<Array<{
     numero: bigint
-    voterId: string
     answers: Array<{ questionId: bigint; optionIndex: bigint }>
   }>>
   getAuditData: () => Promise<AuditData>
   getModuleHash: (canisterId: Principal) => Promise<string>
-  hasUserVoted: (surveyId: string, voterId: string) => Promise<boolean>
+  hasCallerVoted: (surveyId: string) => Promise<boolean>
 }
 
 interface FrontendAssetEncoding {
@@ -418,7 +415,6 @@ export const canisterService = {
 
     return responses.map((response) => ({
       numero: bigintToNumber(response.numero),
-      voterId: response.voterId,
       answers: response.answers.map((answer) => ({
         questionId: bigintToNumber(answer.questionId),
         optionIndex: bigintToNumber(answer.optionIndex),
@@ -460,10 +456,10 @@ export const canisterService = {
       .sort((left, right) => left.file.localeCompare(right.file))
   },
 
-  async hasUserVoted(surveyId: string, anonymousId: string): Promise<boolean> {
+  async hasCallerVoted(surveyId: string): Promise<boolean> {
     return withTrustRetry(async () => {
-      const actor = await getBackendActor(false)
-      return actor.hasUserVoted(surveyId, anonymousId)
+      const actor = await getBackendActor(true)
+      return actor.hasCallerVoted(surveyId)
     })
   },
 }

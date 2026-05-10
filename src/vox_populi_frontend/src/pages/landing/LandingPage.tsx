@@ -70,7 +70,7 @@ function LandingFooter() {
 // --- COMPONENTE PRINCIPAL ---
 export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
   const { locale, t } = useLocale()
-  const { isLoggedIn, login, userVoterId } = useAuth()
+  const { isLoggedIn, login } = useAuth()
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [showAlreadyVotedModal, setShowAlreadyVotedModal] = useState(false)
   const [reloginNotice, setReloginNotice] = useState<string | null>(null)
@@ -109,25 +109,15 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
     }
   }
 
-  const handleVoteAction = async (voterIdOverride?: string) => {
-    const effectiveVoterId = voterIdOverride ?? userVoterId
-    const hasFreshIdentity = typeof voterIdOverride === "string" && voterIdOverride.length > 0
-
-    if (!isLoggedIn && !hasFreshIdentity) {
-      setPendingAction("vote")
-      setShowLoginModal(true)
-      return
-    }
-
-    if (!effectiveVoterId) {
+  const handleVoteAction = async () => {
+    if (!isLoggedIn) {
       setPendingAction("vote")
       setShowLoginModal(true)
       return
     }
 
     try {
-      const alreadyVoted = await canisterService.hasUserVoted("ai-uoc-2024", effectiveVoterId)
-
+      const alreadyVoted = await canisterService.hasCallerVoted("ai-uoc-2024")
       if (alreadyVoted) {
         setShowAlreadyVotedModal(true)
         return
@@ -143,7 +133,7 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <LandingHeader />
-      
+
       <main className="flex-1 flex flex-col">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16 w-full">
           <motion.div
@@ -213,12 +203,12 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
           setPendingAction(null) // Limpiamos si cierra sin loguearse
         }}
         onSuccess={(identity) => {
-          login(identity.sessionId, identity.voterId, identity.expiresAt)
+          login(identity.sessionId, identity.expiresAt)
           setShowLoginModal(false)
           
           // EJECUCIÓN AUTOMÁTICA: Si había algo pendiente, lo lanzamos ahora
           if (pendingAction === "vote") {
-            void handleVoteAction(identity.voterId)
+            void handleVoteAction()
           }
 
           if (pendingAction === "results") {
