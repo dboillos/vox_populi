@@ -1,10 +1,8 @@
 import Blob "mo:base/Blob";
-import Int "mo:base/Int";
 import List "mo:base/List";
 import Nat "mo:base/Nat";
 import Principal "mo:base/Principal";
 import Text "mo:base/Text";
-import Time "mo:base/Time";
 
 import AuditService "./audit/audit_service";
 import IdentityRegistryService "./auth/identity_registry_service";
@@ -28,41 +26,6 @@ import Validation "./shared/validation";
 // - Reducir acoplamiento entre endpoints y calculos.
 // - Facilitar pruebas y mantenimiento por responsabilidades.
 persistent actor Self {
-  type LegacyStoredVote = {
-    voteId : Nat;
-    surveyId : Text;
-    voterId : Text;
-    timestamp : Nat;
-    answers : [AnswerSelection];
-  };
-
-  func migrateLegacyVote(vote : LegacyStoredVote) : Types.StoredVote {
-    {
-      voteId = vote.voteId;
-      surveyId = vote.surveyId;
-      voterId = vote.voterId;
-      answers = vote.answers;
-    };
-  };
-
-  func migrateLegacyVotes(votes : List.List<LegacyStoredVote>) : List.List<Types.StoredVote> {
-    List.map<LegacyStoredVote, Types.StoredVote>(votes, migrateLegacyVote);
-  };
-
-  func projectStoredVoteToLegacy(vote : Types.StoredVote) : LegacyStoredVote {
-    {
-      voteId = vote.voteId;
-      surveyId = vote.surveyId;
-      voterId = vote.voterId;
-      timestamp = 0;
-      answers = vote.answers;
-    };
-  };
-
-  func projectStoredVotesToLegacy(votes : List.List<Types.StoredVote>) : List.List<LegacyStoredVote> {
-    List.map<Types.StoredVote, LegacyStoredVote>(votes, projectStoredVoteToLegacy);
-  };
-
   // Reexport de tipos para mantener estable el contrato Candid.
   // Esto garantiza que las declaraciones TypeScript sigan alineadas.
   public type AnswerSelection = Types.AnswerSelection;
@@ -82,11 +45,13 @@ persistent actor Self {
 
   // Contador incremental para generar identificadores de voto legibles.
   var nextVoteId : Nat = 1;
-  // Almacen legado de votos en formato previo con timestamp.
-  // Se conserva temporalmente para permitir el upgrade sin perder el estado.
-  var storedVotes : List.List<LegacyStoredVote> = List.nil<LegacyStoredVote>();
-  // Nuevo almacenamiento estable sin timestamp para las versiones posteriores.
-  var storedVotesV2 : List.List<Types.StoredVote> = migrateLegacyVotes(storedVotes);
+  // Almacen principal de votos en lista enlazada.
+  // Ventaja: insercion O(1) con List.push sin copiar todo el historico.
+  // Nota: la lista guarda los votos mas recientes al inicio.
+  // Enfoque de rendimiento del backend:
+  // - Escritura (submitVote): O(1) por insercion.
+  // - Lectura/cálculo (queries agregadas): O(n) sobre votos filtrados.
+  var storedVotes : List.List<Types.StoredVote> = List.nil<Types.StoredVote>();
   // Version de la logica de negocio del cuestionario.
   // Se expone por auditoria en getAuditData.
   let surveyCodeVersion : Text = "1.0.0";
@@ -115,7 +80,7 @@ persistent actor Self {
   // Indices en memoria para consultas O(1).
   transient let voteLookup : VoteRuntimeService.VoteLookup = VoteRuntimeService.buildVoteLookup(voteLookupEntries);
   transient let identityRegistry : IdentityRegistryService.IdentityRegistry = IdentityRegistryService.buildIdentityMap(identityRegistryEntries);
-  transient let surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotesV2);
+  transient let surveyVotesCache : VoteRuntimeService.SurveyVotesCache = VoteRuntimeService.buildSurveyVotesCache(storedVotes);
 
   // Subset de la interfaz del IC Management Canister necesario para canister_status.
   // Para que funcione, este canister debe estar en su propia lista de controladores:
@@ -281,7 +246,7 @@ persistent actor Self {
     let result = VoteRuntimeService.submitVoteWithIndexes(
       voteLookup,
       surveyVotesCache,
-      storedVotesV2,
+      storedVotes,
       nextVoteId,
       voteLookupEntries,
       surveyId,
@@ -291,8 +256,7 @@ persistent actor Self {
       questionOptionCounts,
     );
 
-    storedVotesV2 := result.storedVotes;
-    storedVotes := projectStoredVotesToLegacy(result.storedVotes);
+    storedVotes := result.storedVotes;
     nextVoteId := result.nextVoteId;
     voteLookupEntries := result.voteLookupEntries;
 
