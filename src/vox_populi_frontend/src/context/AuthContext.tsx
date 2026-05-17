@@ -29,22 +29,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(SESSION_KEY)
-    if (stored) {
-      try {
-        const session = JSON.parse(stored)
-        if (Date.now() < session.expiresAt) {
-          setIsLoggedIn(true)
-          setUserSessionId(session.sessionId ?? null)
-        } else {
-          logout()
-        }
-      } catch {
-        logout()
-      }
-    }
+    // Requisito de seguridad UX: al recargar la página se fuerza login desde cero.
+    sessionStorage.removeItem(SESSION_KEY)
+    canisterService.resetClientIdentity()
+    setIsLoggedIn(false)
+    setUserSessionId(null)
     setIsInitializing(false)
-  }, [logout])
+  }, [])
 
   const login = (sessionId: string, expiresAt: number) => {
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ sessionId, expiresAt }))

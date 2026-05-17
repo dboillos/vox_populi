@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 
 // Lógica y Contexto (Carpeta src/lib)
 import { useLocale } from "@/lib/locale-context"
-import { LoginError, type LoginIdentity, loginWithGoogle, preloadGoogleSdk } from "@/lib/login"
+import { LoginError, type LoginIdentity, type LoginProgressStage, loginWithGoogle, preloadGoogleSdk } from "@/lib/login"
 
 interface LoginModalProps {
   isOpen: boolean
@@ -20,6 +20,14 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
   const { t } = useLocale()
   const [isLoading, setIsLoading] = useState(false)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [loadingStepIndex, setLoadingStepIndex] = useState(0)
+
+  const progressStageToIndex: Record<LoginProgressStage, number> = {
+    opening_google: 0,
+    waiting_google_selection: 0,
+    verifying_institutional_account: 1,
+    validating_secure_session: 2,
+  }
 
   useEffect(() => {
     if (!isOpen) {
@@ -29,12 +37,21 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
     void preloadGoogleSdk()
   }, [isOpen])
 
+  useEffect(() => {
+    if (!isLoading) {
+      setLoadingStepIndex(0)
+    }
+  }, [isLoading])
+
   const handleGoogleLogin = async () => {
     setIsLoading(true)
     setAuthError(null)
+    setLoadingStepIndex(0)
 
     try {
-      const identity = await loginWithGoogle()
+      const identity = await loginWithGoogle((stage) => {
+        setLoadingStepIndex(progressStageToIndex[stage])
+      })
       onSuccess(identity)
     } catch (error) {
       if (error instanceof LoginError && error.code === "domain_not_allowed") {
@@ -114,6 +131,20 @@ export function LoginModal({ isOpen, onClose, onSuccess }: LoginModalProps) {
                       </>
                     )}
                   </Button>
+
+                  {isLoading ? (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+                      <motion.p
+                        key={loadingStepIndex}
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        className="text-sm text-foreground"
+                      >
+                        {t.login.loadingSteps[loadingStepIndex]}
+                      </motion.p>
+                    </div>
+                  ) : null}
 
                   <div className="flex items-start gap-3 p-4 bg-accent/50 rounded-lg">
                     <CheckCircle2 className="w-5 h-5 text-primary mt-0.5 flex-shrink-0" />

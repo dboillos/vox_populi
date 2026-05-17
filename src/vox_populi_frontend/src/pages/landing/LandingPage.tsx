@@ -130,6 +130,21 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
     }
   }
 
+  const performVoteCheckAfterLogin = async () => {
+    try {
+      const alreadyVoted = await canisterService.hasCallerVoted("ai-uoc-2024")
+      if (alreadyVoted) {
+        setShowAlreadyVotedModal(true)
+        return
+      }
+
+      onVote()
+    } catch (error) {
+      console.error("[LandingPage] No se pudo validar si el usuario ya ha votado", error)
+      onVote()
+    }
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <LandingHeader />
@@ -208,7 +223,7 @@ export function LandingPage({ onVote, onResults, onAudit }: LandingPageProps) {
           
           // EJECUCIÓN AUTOMÁTICA: Si había algo pendiente, lo lanzamos ahora
           if (pendingAction === "vote") {
-            void handleVoteAction()
+            void performVoteCheckAfterLogin()
           }
 
           if (pendingAction === "results") {

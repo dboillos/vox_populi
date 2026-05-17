@@ -28,6 +28,12 @@ export type LoginIdentity = {
     expiresAt: number
 }
 
+export type LoginProgressStage =
+  | "opening_google"
+  | "waiting_google_selection"
+  | "verifying_institutional_account"
+  | "validating_secure_session"
+
 type GoogleCredentialResponse = {
   credential?: string
 }
@@ -396,17 +402,20 @@ function normalizeIdToken(rawToken: string): string {
   return trimmed
 }
 
-export async function loginWithGoogle(): Promise<LoginIdentity> {
+export async function loginWithGoogle(onProgress?: (stage: LoginProgressStage) => void): Promise<LoginIdentity> {
   // Este método SOLO autentica identidad institucional.
   // No escribe votos ni genera aún el identificador de voto.
   const redirectedIdToken = consumeOidcRedirectIdToken()
 
   if (!redirectedIdToken) {
+    onProgress?.("opening_google")
     await loadGoogleSdk()
+    onProgress?.("waiting_google_selection")
   }
 
   // 1) Obtener id_token firmado por Google en cliente.
   const rawToken = redirectedIdToken ?? await requestGoogleIdToken()
+  onProgress?.("verifying_institutional_account")
   const idToken = normalizeIdToken(rawToken)
   if (idToken.split(".").length !== 3) {
     throw new LoginError("google_auth_failed", "Formato de id_token inválido")
@@ -414,6 +423,7 @@ export async function loginWithGoogle(): Promise<LoginIdentity> {
   // 2) Intercambiar id_token por sessionId opaco en backend (sin persistir JWT).
   let sessionResult
   try {
+    onProgress?.("validating_secure_session")
     sessionResult = await canisterService.authenticateWithGoogle(idToken)
   } catch (error) {
     throw formatBackendLoginError(error)

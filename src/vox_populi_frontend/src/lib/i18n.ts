@@ -136,6 +136,7 @@ export interface Translations {
     secureAccess: string
     loginDescription: string
     continueWithGoogle: string
+    loadingSteps: string[]
     privacyNote: string
     privacyNoteParts: {
       before: string
@@ -327,6 +328,12 @@ survey: {
       secureAccess: "Acceso Seguro",
       loginDescription: "Identifícate con tu cuenta institucional de la UOC para participar en la encuesta de forma anónima y segura.",
       continueWithGoogle: "Continuar con Google (@uoc.edu)",
+      loadingSteps: [
+        "Abriendo autenticación segura con Google...",
+        "Verificando tu cuenta institucional @uoc.edu...",
+        "Validando sesión segura en Internet Computer...",
+        "Preparando tu acceso a la encuesta..."
+      ],
       privacyNote: "Tu email solo se usa para verificar tu pertenencia a la UOC. Se generará un ID anónimo en ICP que no puede vincularse a tu identidad.",
       privacyNoteParts: {
         before: "Tu email solo se usa para verificar tu pertenencia a la UOC. Se generará un ",
@@ -505,6 +512,12 @@ survey: {
       secureAccess: "Secure Access",
       loginDescription: "Sign in with your UOC institutional account to participate in the survey anonymously and securely.",
       continueWithGoogle: "Continue with Google (@uoc.edu)",
+      loadingSteps: [
+        "Opening secure authentication with Google...",
+        "Verifying your institutional @uoc.edu account...",
+        "Validating your secure session on Internet Computer...",
+        "Preparing your survey access..."
+      ],
       privacyNote: "Your email is only used to verify your UOC membership. An anonymous ID will be generated on ICP that cannot be linked to your identity.",
       privacyNoteParts: {
         before: "Your email is only used to verify your UOC membership. An ",
@@ -683,6 +696,12 @@ survey: {
       secureAccess: "Accés Segur",
       loginDescription: "Identifica't amb el teu compte institucional de la UOC per participar a l'enquesta de forma anònima i segura.",
       continueWithGoogle: "Continuar amb Google (@uoc.edu)",
+      loadingSteps: [
+        "Obrint autenticació segura amb Google...",
+        "Verificant el teu compte institucional @uoc.edu...",
+        "Validant la teva sessió segura a Internet Computer...",
+        "Preparant el teu accés a l'enquesta..."
+      ],
       privacyNote: "El teu email només s'utilitza per verificar la teva pertinença a la UOC. Es generarà un ID anònim a ICP que no pot vincular-se a la teva identitat.",
       privacyNoteParts: {
         before: "El teu email només s'utilitza per verificar la teva pertinença a la UOC. Es generarà un ",
